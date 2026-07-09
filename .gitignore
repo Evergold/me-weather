@@ -40,3 +40,6 @@ server/__pycache__/
 # Server assets (ignore contents but keep folder)
 server/assets/*
 !server/assets/.gitkeep
+
+# LOTRO game documentation folder
+SSG_U25_LuaDocumentation/
