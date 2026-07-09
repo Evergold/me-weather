@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('simulation-canvas');
   
   // 1. Initialize core sub-systems
-  const physics = new WeatherPhysics(128, 128);
+  const physics = new WeatherPhysics(256, 256);
   const renderer = new WeatherRenderer(canvas);
   let ui = null;
 

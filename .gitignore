@@ -30,3 +30,13 @@ dist/
 *.sln
 *.sw?
 .DS_Store
+
+# Python virtual environments & bytecode
+server/.venv/
+server/venv/
+server/__pycache__/
+*.pyc
+
+# Server assets (ignore contents but keep folder)
+server/assets/*
+!server/assets/.gitkeep

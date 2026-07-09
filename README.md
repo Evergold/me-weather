@@ -1,71 +1,82 @@
 # Middle-earth Weather Simulator (ME-Weather)
 
-An interactive, browser-based gridded weather simulator of Middle-earth, driven by a grayscale terrain heightmap. It simulates thermodynamic and fluid dynamic interactions across a 128x128 grid in real-time, mapping dynamic wind flows, precipitation, temperature variations, and moisture indices.
+An interactive, GPU-accelerated client-server weather simulator of Middle-earth. It simulates thermodynamics, fluid dynamics, hydrology routing, and terrain-climate interactions across massive high-resolution grids in real-time, delivering dynamic wind flows, precipitation, temperature variations, and moisture indices.
 
-![Middle-earth Weather Simulator Screenshot](screenshot.png)
+![Middle-earth Weather Simulator Screenshot](screenshot_2.png)
 
 ---
 
 ## ✨ Features
 
-*   **Custom Heightmap Support:** Drag-and-drop any grayscale heightmap directly into the browser to initialize the terrain layout. White pixels represent mountain ranges (e.g. Misty Mountains) and black pixels represent sea level.
-*   **Mythic Dark Theme:** A premium fantasy cartography meets science-telemetry aesthetic featuring slate-gray panels, warm gold accents, and fluid visual particles.
-*   **Physics-Driven Climate:**
-    *   **Thermodynamics:** Base season temperatures combined with latitude shifts, solar day/night heating cycles, and altitude lapse rate cooling.
-    *   **Fluid Dynamics:** Wind fields accelerated by local pressure gradients, deflected by the Coriolis effect, and blocked or steered around mountain ridges.
-    *   **Orographic Precipitation:** Damp sea winds rise over mountain slopes, forcing condensation and heavy rain or snow, leaving dry rain-shadow basins on the leeward side.
-    *   **Precipitation Phases:** Local freezing thresholds determine whether storm cells drop falling rain streaks or drifting snow particles.
-*   **Interactive Controls & Visual Overlays:**
-    *   **Overlays:** Toggle between visual representations of Terrain relief, Temperature heatmaps, Moisture/Humidity indexes, and isobaric Pressure fields.
-    *   **Weather Effects:** Toggle wind flow streamlines, rain/snow particles, and location markers.
-    *   **Hover Inspector:** Telemetry HUD displaying coordinates, altitude, temperature, wind speed/direction, and precipitation probability.
-    *   **Interactive Landmarks:** Monitor pre-configured landmarks (Hobbiton, Rivendell, Minas Tirith, Mount Doom, Helm's Deep) and right-click to place custom weather stations that persist via LocalStorage.
+*   **Server-Side Terrain Map Support**: The server holds and serves the master elevation maps, dynamically slicing them into standard quadtree tiles on startup (with testing completed at 8k/16k resolutions). If maps are missing, the server halts startup to ensure integrity.
+*   **Unified Client-Server Process**: A Python FastAPI server serves the physics simulation and WebSocket telemetry channel, while also serving the compiled Vite client assets from the same process on port `8000`.
+*   **WebGPU 3D Client Renderer**: Built with WebGPU and Three.js, rendering a dynamic 3D displaced terrain mesh, volumetric sky raymarching, glowing landmark pins, and screen-space weather particles.
+*   **GPU-Agnostic Cross-Platform Simulation**: The Python server utilizes standalone WebGPU (`wgpu-py` / WGSL) to run progressive simulation steps. It is GPU-agnostic (NVIDIA, AMD, Intel, Apple) and cross-platform (Windows, Linux, macOS) with a vectorized NumPy CPU fallback.
+*   **Dynamic Hydrology**: Dynamic flow routing calculations run on CPU worker pools. Rainwater aggregates and flows downhill to carve riverbeds and form pooling basins in real-time.
+*   **Configurable WebSocket Sync**: WebSocket streaming uses quantized Float16 binary ArrayBuffers for low latency. Delivery rates are client-configurable (real-time, 250ms, 500ms, 1000ms).
+*   **Dynamic sub-stepping**: Automatically scales simulation time steps based on wind speeds to prevent numerical explosions.
+*   **WebGL 2 Fallback**: Devices without WebGPU support silently degrade to WebGL 2 / 2D Canvas rendering to remain functional.
 
 ---
 
 ## 🛠️ Technology Stack
 
-*   **Vite** — Fast, modern frontend bundling and hot module replacement.
-*   **Vanilla JavaScript (ES6)** — Modular architecture split across physics solver, canvas rendering, and DOM UI controller.
-*   **HTML5 Canvas** — Colorized relief-mapping, Lambertian hillshading shadows, vector flow particle animations, and weather particle systems.
-*   **CSS3** — Custom design tokens, glassmorphism filters, responsive grid layouts, and custom-styled sliders.
+*   **Vite & Vanilla JavaScript (ES6)** — Client-side bundler and modular UI controllers.
+*   **Three.js (WebGL/WebGPU)** — Client-side 3D terrain rendering, lighting, and particles.
+*   **FastAPI & Uvicorn** — Server-side API host, tile streaming, and WebSockets.
+*   **wgpu-py & WGSL** — Standalone GPU-agnostic server-side physics compute shaders.
+*   **NumPy** — Vectorized arrays and CPU fallback solvers.
+*   **uv** — Blazing-fast virtual environment and dependency manager.
 
 ---
 
 ## 🚀 Getting Started
 
-### Prerequisites
+Ensure you have [Node.js](https://nodejs.org/) (v18+) and [Python](https://www.python.org/) (v3.10+) installed.
 
-Ensure you have [Node.js](https://nodejs.org/) installed (v18 or higher recommended).
+### 1. Set Up the Python Environment
+Install `uv` (if not already installed) and set up the virtual environment:
+```bash
+cd server
+uv venv .venv
+uv pip install -r requirements.txt
+```
 
-### Installation & Run
+### 2. Verify Master Terrain Assets
+Place your master terrain maps in the server assets folder (the code automatically scales to any size, with 8k–16k being the primary tested range):
+*   `server/assets/heightmap.png` (grayscale elevation map)
+*   `server/assets/normalmap.png` (RGB normal map)
 
-1.  Clone or download this repository.
-2.  Navigate to the project directory:
+### 3. Launch the Simulator (Dual-Process Setup)
+This runs the FastAPI simulation on port `8000` and the Vite dev server with Hot Module Replacement (HMR) for frontend files on port `5173`.
+
+1.  **Start the Simulation Server**:
     ```bash
-    cd me-weather
+    cd server
+    .venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
     ```
-3.  Install dependencies:
-    ```bash
-    npm install
-    ```
-4.  Launch the development server:
+2.  **Start the Vite Frontend Dev Server**:
+    In a new terminal window at the project root directory:
     ```bash
     npm run dev
     ```
-5.  Open your browser and navigate to the address displayed in the terminal (usually `http://localhost:5173`).
-6.  Drag and drop your heightmap image onto the landing card to begin the simulation!
+3.  Open `http://localhost:5173` in your web browser. Any edits made to files in `src/` or `index.html` will hot-reload instantly!
 
-### Production Build
+---
 
-To compile a minified production bundle in the `dist/` directory:
+## ⚙️ Configuration
 
-```bash
-npm run build
-```
+You can customize the simulation parameters by editing **`server/.env`**:
 
-To preview the production build locally:
+```ini
 
-```bash
-npm run preview
+# Terrain asset filenames (relative to server/assets/)
+HEIGHTMAP_FILENAME=heightmap.png
+NORMALMAP_FILENAME=normalmap.png
+
+# Pause physics loop when no clients are connected (True/False)
+PAUSE_ON_IDLE=True
+
+# Run river routing only once every 10s to conserve CPU (True/False)
+DECOUPLE_HYDROLOGY=False
 ```
