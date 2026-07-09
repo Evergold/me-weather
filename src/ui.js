@@ -36,6 +36,7 @@ export class WeatherUI {
     this.initDOMReferences();
     this.bindEvents();
     this.renderLandmarksList();
+    this.autoLaunch();
   }
 
   initDOMReferences() {
@@ -88,12 +89,71 @@ export class WeatherUI {
     this.btnPinConfirm = document.getElementById('btn-pin-confirm');
   }
 
+  autoLaunch() {
+    // Automatically transition to the dashboard and trigger simulation start on load
+    // only when the textures and WebSocket are fully connected and ready.
+    const startTime = performance.now();
+    const checkInterval = setInterval(() => {
+      const elapsed = performance.now() - startTime;
+      
+      const isPhysicsReady = this.physics.isTerrainLoaded;
+      const isRendererReady = this.renderer.isTerrainLoaded;
+      const isSocketReady = this.physics.isConnected;
+
+      // Force launch if it takes longer than 5 seconds as a safety fallback
+      if ((isPhysicsReady && isRendererReady && isSocketReady) || elapsed > 5000) {
+        clearInterval(checkInterval);
+        console.log(`[UI] Launching dashboard. Setup took ${elapsed.toFixed(0)}ms. (Physics: ${isPhysicsReady}, Renderer: ${isRendererReady}, Socket: ${isSocketReady})`);
+        
+        this.landingScreen.classList.remove('active');
+        this.dashboardScreen.classList.add('active');
+        this.simSpeed = 1;
+        this.physics.sendSettings({ simSpeed: 1 });
+        this.startSimulationLoop();
+        
+        // Force resize to compute correct layout dimensions
+        setTimeout(() => {
+          window.dispatchEvent(new Event('resize'));
+        }, 50);
+      }
+    }, 100);
+  }
+
   bindEvents() {
-    // 1. File Upload / Landing Events
-    this.dropZone.addEventListener('click', () => this.fileInput.click());
+    // 0. Header Click Toggle (Overhead 2D Map View)
+    const header = document.querySelector('.dashboard-header');
+    if (header) {
+      header.setAttribute('title', 'Click to toggle overhead 2D view');
+      header.addEventListener('click', (e) => {
+        // Prevent trigger when clicking interactive children inside the header (buttons, inputs)
+        if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select') || e.target.closest('a')) {
+          return;
+        }
+        
+        const isOverhead = this.dashboardScreen.classList.toggle('overhead-mode');
+        this.renderer.toggleOverheadView(isOverhead);
+        
+        // Force layout repaint resize
+        window.dispatchEvent(new Event('resize'));
+      });
+    }
+
+    // 1. File Upload / Landing Events (Re-purposed to connect directly)
+    this.dropZone.addEventListener('click', () => {
+      this.landingScreen.classList.remove('active');
+      this.dashboardScreen.classList.add('active');
+      this.simSpeed = 1;
+      this.physics.sendSettings({ simSpeed: 1 });
+      this.startSimulationLoop();
+    });
     
     this.fileInput.addEventListener('change', (e) => {
-      if (e.target.files.length > 0) this.handleHeightmapUpload(e.target.files[0]);
+      // Direct load
+      this.landingScreen.classList.remove('active');
+      this.dashboardScreen.classList.add('active');
+      this.simSpeed = 1;
+      this.physics.sendSettings({ simSpeed: 1 });
+      this.startSimulationLoop();
     });
 
     this.dropZone.addEventListener('dragover', (e) => {
@@ -108,14 +168,17 @@ export class WeatherUI {
     this.dropZone.addEventListener('drop', (e) => {
       e.preventDefault();
       this.dropZone.classList.remove('dragover');
-      if (e.dataTransfer.files.length > 0) {
-        this.handleHeightmapUpload(e.dataTransfer.files[0]);
-      }
+      this.landingScreen.classList.remove('active');
+      this.dashboardScreen.classList.add('active');
+      this.simSpeed = 1;
+      this.physics.sendSettings({ simSpeed: 1 });
+      this.startSimulationLoop();
     });
 
     // 2. Dashboard Resets
     this.btnResetMap.addEventListener('click', () => {
       this.simSpeed = 0;
+      this.physics.sendSettings({ simSpeed: 0 });
       this.dashboardScreen.classList.remove('active');
       this.landingScreen.classList.add('active');
       this.fileInput.value = '';
@@ -127,6 +190,7 @@ export class WeatherUI {
         document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.simSpeed = parseInt(btn.dataset.speed, 10);
+        this.physics.sendSettings({ simSpeed: this.simSpeed });
       });
     });
 
@@ -134,6 +198,7 @@ export class WeatherUI {
     this.sliderTime.addEventListener('input', (e) => {
       this.timeOfDay = parseInt(e.target.value, 10);
       this.updateTimeDisplay();
+      this.physics.sendSettings({ timeOfDay: this.timeOfDay });
     });
 
     // 5. Season Select
@@ -146,25 +211,31 @@ export class WeatherUI {
         winter: 'Mid-Winter'
       };
       this.hudSeason.textContent = displayNames[this.season];
+      this.physics.sendSettings({ season: this.season });
     });
 
     // 6. Wind & Temp sliders
     this.sliderWindSpeed.addEventListener('input', (e) => {
       this.globalWindSpeed = parseInt(e.target.value, 10);
       this.valWindSpeed.textContent = `${this.globalWindSpeed} kt`;
+      this.physics.sendSettings({ windSpeed: this.globalWindSpeed });
     });
 
+    // 7. Wind Direction
     this.sliderWindDir.addEventListener('input', (e) => {
       this.globalWindAngle = parseInt(e.target.value, 10);
       const dirStr = getCompassDir(this.globalWindAngle);
       this.valWindDir.textContent = `${this.globalWindAngle}° (${dirStr})`;
       this.hudWindDir.textContent = `${dirStr} (${this.globalWindAngle}°)`;
+      this.physics.sendSettings({ windAngle: this.globalWindAngle });
     });
 
+    // 8. Global Temp Shift
     this.sliderGlobalTemp.addEventListener('input', (e) => {
       this.globalTempShift = parseInt(e.target.value, 10);
       const prefix = this.globalTempShift > 0 ? '+' : '';
       this.valGlobalTemp.textContent = `${prefix}${this.globalTempShift}°C`;
+      this.physics.sendSettings({ tempShift: this.globalTempShift });
     });
 
     // 7. Layer Selection Overlays
