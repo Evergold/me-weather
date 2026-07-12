@@ -43,3 +43,9 @@ server/assets/*
 
 # LOTRO game documentation folder
 SSG_U25_LuaDocumentation/
+
+# Local Environment configurations
+.env
+.env.*
+server/.env
+server/.env.*
