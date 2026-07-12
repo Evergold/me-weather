@@ -1,3 +1,6 @@
+// physics.js (c) 2026 Evergold <261058386+Evergold@users.noreply.github.com>
+// Licensed under the MIT License (see LICENSE for details)
+
 /**
  * Middle-earth Weather Simulator - Client-Side Physics Sync & Telemetry
  * Handles the WebSocket connection to the Python server, decodes binary ArrayBuffers (Float16),

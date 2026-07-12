@@ -1,3 +1,6 @@
+// landmarks.js (c) 2026 Evergold <261058386+Evergold@users.noreply.github.com>
+// Licensed under the MIT License (see LICENSE for details)
+
 /**
  * Middle-earth landmarks management
  * Contains pre-configured locations and handles custom user-placed pins.
