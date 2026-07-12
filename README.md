@@ -43,7 +43,15 @@ uv venv .venv
 uv pip install -r requirements.txt
 ```
 
-### 2. Launching in Production Mode (Single-Process Setup)
+### 2. Extracting Terrain Heights (Optional/Experimental)
+If you have the source game data files, configure `HEIGHTS_PATH` in `.env` and extract the regional heightmaps:
+```bash
+cd server
+.venv/bin/python height_extractor.py --mode extract-regions --region all
+```
+Generated heightmaps are saved in `server/assets/generated-heights/`.
+
+### 3. Launching in Production Mode (Single-Process Setup)
 This compiles the frontend assets and runs both the FastAPI backend and the client web app together on port `8000`.
 
 1.  **Build the Client Assets**:
@@ -58,7 +66,7 @@ This compiles the frontend assets and runs both the FastAPI backend and the clie
     ```
 3.  Open `http://localhost:8000` in your web browser.
 
-### 3. Launching in Development Mode (Dual-Process Setup)
+### 4. Launching in Development Mode (Dual-Process Setup)
 This runs the FastAPI backend on port `8000` and the Vite dev server with Hot Module Replacement (HMR) on port `5173`.
 
 1.  **Start the Simulation Server**:
@@ -77,7 +85,7 @@ This runs the FastAPI backend on port `8000` and the Vite dev server with Hot Mo
 
 ## ⚙️ Configuration
 
-You can customize the simulation parameters by editing **`server/.env`**:
+You can customize the simulation parameters by editing **`.env`**:
 
 ```ini
 # Terrain asset filenames (relative to server/assets/)
@@ -89,4 +97,7 @@ PAUSE_ON_IDLE=True
 
 # Run river routing only once every 10s to conserve CPU (True/False)
 DECOUPLE_HYDROLOGY=False
+
+# Data Installation Path
+HEIGHTS_PATH="assets"
 ```
