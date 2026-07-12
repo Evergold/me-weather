@@ -1,3 +1,6 @@
+// renderer.js (c) 2026 Evergold <261058386+Evergold@users.noreply.github.com>
+// Licensed under the MIT License (see LICENSE for details)
+
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 

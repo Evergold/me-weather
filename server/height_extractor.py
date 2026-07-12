@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# height_extractor.py (c) 2026 Evergold <261058386+Evergold@users.noreply.github.com>
+# Licensed under the MIT License (see LICENSE for details)
 """
 LOTRO Terrain Heightmap Extractor
 Extracts raw 16-bit height values from LOTRO client_cell_N.dat files on a per-region basis,

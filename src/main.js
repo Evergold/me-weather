@@ -1,3 +1,6 @@
+// main.js (c) 2026 Evergold <261058386+Evergold@users.noreply.github.com>
+// Licensed under the MIT License (see LICENSE for details)
+
 /**
  * Middle-earth Weather Simulator - Main Entry Point
  * Coordinates the Physics grid updates, Canvas rendering, and UI event systems.
