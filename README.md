@@ -23,7 +23,7 @@ An interactive, GPU-accelerated client-server weather simulator of Middle-earth.
 ## 🛠️ Technology Stack
 
 *   **Vite & Vanilla JavaScript (ES6)** — Client-side bundler, state manager, and UI controller.
-*   **Three.js (WebGL)** — Client-side 3D terrain rendering, light cycles, and volumetric particles.
+*   **Babylon.js (WebGPU / WebGL 2)** — Client-side 3D terrain rendering, real-time light cycles, dynamic weather systems, and fallback systems.
 *   **FastAPI & Uvicorn** — Server-side API host, static asset delivery, and WebSockets.
 *   **wgpu-py** — Native WebGPU context and compute buffer management on the server.
 *   **NumPy** — Vectorized grid arrays and CPU background solvers.
@@ -101,3 +101,35 @@ DECOUPLE_HYDROLOGY=False
 # Heights (cell) Installation Path
 HEIGHTS_PATH="assets"
 ```
+
+---
+
+## 🌐 Browser WebGPU Configuration Guide
+
+By default, the client uses the high-performance **WebGPU** rendering pipeline (via Babylon.js) with a seamless automatic fallback to **WebGL 2** if WebGPU is unsupported or disabled by the browser. 
+
+Use the following settings to get native WebGPU running on your preferred browser:
+
+### 🦁 Brave Browser (Linux / Desktop)
+Brave's default shields and fingerprinting protections block GPU adapter access. 
+1.  **Toggle Shields Off**: Click the lion icon in the address bar and toggle **Shields to "Down" (Off)** for `http://localhost:5173` (or `http://localhost:8000`). This stops WebGL warning spam and allows Brave to query WebGPU hardware adapter info.
+2.  **Enable Vulkan**: Navigate to `brave://flags`, search for `#enable-vulkan`, and set it to **Enabled** (Vulkan is required for WebGPU on Linux).
+3.  **Enable WebGPU**: Search for `#enable-unsafe-webgpu` in `brave://flags` and set it to **Enabled**.
+4.  Relaunch Brave.
+
+### 🦊 Firefox Nightly & Developer Edition
+Firefox Nightly has the most up-to-date WGSL compiler (`naga`) and Vulkan integration. WebGPU is optimistically enabled by default on Firefox Nightly.
+1.  Navigate to `about:config`.
+2.  Set **`dom.webgpu.enabled`** to `true`.
+3.  Set **`gfx.webgpu.force-enabled`** to `true`.
+4.  Set **`dom.webgpu.wgpu-backend`** to `vulkan` (recommended for Linux).
+5.  *(Optional)* Go to `about:support` and verify that **Compositing** is running on hardware-accelerated **`WebRender`**. If it displays *Software*, set **`gfx.webrender.all`** to `true` in `about:config` to force hardware acceleration.
+
+> [!NOTE]
+> **Firefox Nightly WebGPU Validation Warnings:**
+> You may see validation warnings in the console during startup (e.g., `Shader module creation failed: Shader validation error` for `CopyVideoToTexture`). These are harmless browser-level compilation errors originating from Firefox's ongoing `wgpu`/`naga` integration. Because our application does not use video textures, these shaders are never executed, and they have zero impact on rendering stability or performance.
+
+### 🦊 Firefox (Standard Release Channel)
+To protect Linux users from graphics driver hangs, WebGPU is disabled by default on Firefox Release for Linux.
+*   To force-test it, set the flags under the Firefox Nightly section, then visit the application with the override parameter:
+    👉 **`http://localhost:5173/?force-webgpu=1`** (or `http://localhost:8000/?force-webgpu=1`)
