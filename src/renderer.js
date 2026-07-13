@@ -42,7 +42,9 @@ export class WeatherRenderer {
     // 1. Initialise WebGPUEngine (WebGPU preferred, fallback to WebGL 2)
     const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
     const isLinux = navigator.userAgent.toLowerCase().includes('linux');
-    const webgpuSupported = (await BABYLON.WebGPUEngine.IsSupportedAsync) && (!(isFirefox && isLinux) || window.location.search.includes('force-webgpu'));
+    const isNightly = navigator.userAgent.toLowerCase().includes('nightly');
+    const webgpuSupported = (await BABYLON.WebGPUEngine.IsSupportedAsync) && 
+                            (!(isFirefox && isLinux) || isNightly || window.location.search.includes('force-webgpu'));
     let webgpuSuccess = false;
     
     if (webgpuSupported) {
