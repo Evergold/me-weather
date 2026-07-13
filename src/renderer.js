@@ -49,7 +49,7 @@ export class WeatherRenderer {
         ...options,
         antialias: true
       });
-      await this.engine.initializeDriversAsync();
+      await this.engine.initAsync();
     } else {
       console.warn("[Client Renderer] WebGPU not supported. Falling back to WebGL 2...");
       this.engine = new BABYLON.Engine(this.canvas, true, options);
