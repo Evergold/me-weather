@@ -39,6 +39,7 @@ export class WeatherPhysics {
 
     // Local heightmap load state
     this.isTerrainLoaded = false;
+    this.weatherNeedsUpdate = false;
     this.loadCoarseTerrain();
     this.initWebSocket();
   }
@@ -129,6 +130,7 @@ export class WeatherPhysics {
         this.rain[i] = rainView[i] / 255.0;
         this.snow[i] = snowView[i] / 255.0;
       }
+      this.weatherNeedsUpdate = true;
     } catch (e) {
       console.error("[Client Physics] Error unpacking binary frame:", e);
     }
