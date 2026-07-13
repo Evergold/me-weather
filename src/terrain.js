@@ -496,7 +496,9 @@ export class WeatherTerrain {
       }
     };
     
-    const heightUrl = `${apiProtocol}//${apiHost}/tiles/${z}/height/${x}_${y}.png`;
+    const serverY = tilesCount - 1 - y;
+    
+    const heightUrl = `${apiProtocol}//${apiHost}/tiles/${z}/height/${x}_${serverY}.png`;
     const heightTex = new BABYLON.Texture(
       heightUrl,
       this.scene,
@@ -509,7 +511,7 @@ export class WeatherTerrain {
     heightTex.wrapU = BABYLON.Texture.CLAMP_ADDRESSMODE;
     heightTex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
     
-    const normalUrl = `${apiProtocol}//${apiHost}/tiles/${z}/normal/${x}_${y}.png`;
+    const normalUrl = `${apiProtocol}//${apiHost}/tiles/${z}/normal/${x}_${serverY}.png`;
     const normalTex = new BABYLON.Texture(
       normalUrl,
       this.scene,
@@ -522,7 +524,7 @@ export class WeatherTerrain {
     normalTex.wrapU = BABYLON.Texture.CLAMP_ADDRESSMODE;
     normalTex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
     
-    const flowUrl = `${apiProtocol}//${apiHost}/tiles/${z}/flow/${x}_${y}.png`;
+    const flowUrl = `${apiProtocol}//${apiHost}/tiles/${z}/flow/${x}_${serverY}.png`;
     const flowTex = new BABYLON.Texture(
       flowUrl,
       this.scene,
