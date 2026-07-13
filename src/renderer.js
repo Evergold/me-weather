@@ -419,8 +419,32 @@ export class WeatherRenderer {
     if (this.camera && this.canvas) {
       console.log(`[Client Renderer] attachCameraControls: Target before attach: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
       
-      // Standard signature: Left-click drag to rotate, Ctrl + Left-click drag (or Right-click drag) to pan.
       this.camera.attachControl(this.canvas, true);
+      this.camera.useCtrlForPanning = true;
+      
+      const pointers = this.camera.inputs && this.camera.inputs.attached && (this.camera.inputs.attached.pointers || this.camera.inputs.attached.mouse);
+      if (pointers) {
+        pointers.useCtrlForPanning = true;
+        pointers.panningMouseButton = 2; // Default to Right-click panning
+      }
+      
+      // Dynamically toggle panning mouse button on pointerdown to allow Ctrl + Left-click panning
+      // without breaking standard Left-click rotation.
+      if (!this._pointerObserver) {
+        this._pointerObserver = this.scene.onPointerObservable.add((pointerInfo) => {
+          const event = pointerInfo.event;
+          if (pointerInfo.type === BABYLON.PointerEventTypes.POINTERDOWN) {
+            const activePointers = this.camera.inputs && this.camera.inputs.attached && (this.camera.inputs.attached.pointers || this.camera.inputs.attached.mouse);
+            if (activePointers) {
+              if (event.ctrlKey) {
+                activePointers.panningMouseButton = 0; // Left-click pans when Ctrl is held
+              } else {
+                activePointers.panningMouseButton = 2; // Right-click pans, Left-click rotates
+              }
+            }
+          }
+        });
+      }
       
       console.log(`[Client Renderer] attachCameraControls: Target after attach: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
     }
