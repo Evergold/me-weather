@@ -450,6 +450,16 @@ export class WeatherRenderer {
         };
         this.canvas.addEventListener('pointerdown', this._pointerListener, true); // useCapture = true
       }
+
+      if (!this._pointerMoveListener) {
+        this._pointerMoveListener = (event) => {
+          if (event.ctrlKey) {
+            const activePointers = this.camera.inputs && this.camera.inputs.attached && (this.camera.inputs.attached.pointers || this.camera.inputs.attached.mouse);
+            console.log(`[Client Debug] pointermove with Ctrl. Target: ${this.camera.target.toString()} panningMouseButton: ${activePointers?.panningMouseButton} useCtrlForPanning: ${activePointers?.useCtrlForPanning}`);
+          }
+        };
+        this.canvas.addEventListener('pointermove', this._pointerMoveListener, true);
+      }
       
       console.log(`[Client Renderer] attachCameraControls: Target after attach: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
     }
