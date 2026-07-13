@@ -206,7 +206,10 @@ export class WeatherRenderer {
       'pressure': 3
     };
     const layerInt = layerMap[activeLayer] ?? 0;
-    this.terrain.updateUniforms(layerInt, timeOfDay, lightDir, lightColor);
+    const isZoomed = this.camera ? (this.camera.radius < 500) : false;
+    const fx = this.camera ? Math.max(0, Math.min(1, (this.camera.target.x + 1000) / 2000)) : 0.5;
+    const fy = this.camera ? Math.max(0, Math.min(1, (1000 - this.camera.target.z) / 2000)) : 0.5;
+    this.terrain.updateUniforms(layerInt, timeOfDay, lightDir, lightColor, isZoomed, fx, fy);
     
     // 4. Upload dynamic weather data textures
     this.terrain.updateWeatherTexture(physics);

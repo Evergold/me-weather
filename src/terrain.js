@@ -6,10 +6,12 @@ import * as BABYLON from '@babylonjs/core';
 export class WeatherTerrain {
   constructor(scene) {
     this.scene = scene;
-    this.activeTiles = new Map(); // Key: "z_x_y" -> Value: { mesh, material, heightTex, normalTex }
+    this.activeTiles = new Map(); // Key: "z_x_y" -> Value: { mesh, material, heightTex, normalTex, loaded }
     
     this.terrainWidth = 256;
     this.terrainHeight = 256;
+    
+    this.currentZoom = 0;
     
     // Cache for material uniform values to apply to newly created tiles
     this.uniforms = {
@@ -18,7 +20,10 @@ export class WeatherTerrain {
       activeLayer: 0,
       timeOfDay: 480.0,
       uLightDir: new BABYLON.Vector3(-0.5, -0.8, -0.5),
-      uLightColor: new BABYLON.Color3(1.0, 1.0, 1.0)
+      uLightColor: new BABYLON.Color3(1.0, 1.0, 1.0),
+      uIsZoomed: 0.0,
+      uWeatherOffset: new BABYLON.Vector2(0.0, 0.0),
+      uWeatherScale: 1.0
     };
     
     this.weatherTex = null;
@@ -84,6 +89,10 @@ export class WeatherTerrain {
       uniform float timeOfDay;
       uniform vec3 uLightDir;
       uniform vec3 uLightColor;
+      
+      uniform vec2 uWeatherOffset;
+      uniform float uWeatherScale;
+      uniform float uIsZoomed;
 
       varying vec2 vUv;
       varying vec2 vUvGlobal;
@@ -96,8 +105,14 @@ export class WeatherTerrain {
         vec3 lightDir = normalize(-uLightDir);
         float diffuse = max(0.12, dot(normal, lightDir));
 
-        // Sample weather data using global UV coordinates across the entire Middle-earth grid
-        vec4 wData = texture2D(tWeather, vUvGlobal);
+        // Sample weather data using global UV coordinates across the entire Middle-earth grid,
+        // adjusting if focused on a high-resolution regional chunk.
+        vec2 weatherUv = vUvGlobal;
+        if (uIsZoomed > 0.5) {
+          weatherUv = (vUvGlobal - uWeatherOffset) / uWeatherScale;
+        }
+        vec4 wData = texture2D(tWeather, clamp(weatherUv, 0.0, 1.0));
+        
         float temp = wData.r * 70.0 - 20.0;
         float moist = wData.g;
         float rain = wData.b;
@@ -191,7 +206,7 @@ export class WeatherTerrain {
     const apiHost = `${window.location.hostname}:8000`;
     const apiProtocol = window.location.protocol;
     
-    // Find all tiles inside the visibility radius
+    // Find all tiles inside the visibility radius at target zoom z
     for (let x = 0; x < tilesCount; x++) {
       for (let y = 0; y < tilesCount; y++) {
         const tileCenterX = -1000.0 + (x + 0.5) * tileSize;
@@ -204,31 +219,66 @@ export class WeatherTerrain {
         if (dist <= visibilityRadius) {
           const key = `${z}_${x}_${y}`;
           visibleKeys.add(key);
-          
-          if (!this.activeTiles.has(key)) {
-            this.createTile(z, x, y, tileSize, apiProtocol, apiHost);
-          }
         }
       }
     }
     
-    // Remove out-of-range tiles and release resources immediately to prevent VRAM memory leaks
-    for (const [key, tile] of this.activeTiles.entries()) {
-      if (!visibleKeys.has(key)) {
-        if (tile.mesh) tile.mesh.dispose();
-        if (tile.material) tile.material.dispose();
-        if (tile.heightTex) tile.heightTex.dispose();
-        if (tile.normalTex) tile.normalTex.dispose();
-        this.activeTiles.delete(key);
+    // Create new tiles for target zoom z if they don't exist yet
+    let allTargetTilesLoaded = true;
+    for (const key of visibleKeys) {
+      if (!this.activeTiles.has(key)) {
+        const parts = key.split("_");
+        const tx = parseInt(parts[1]);
+        const ty = parseInt(parts[2]);
+        this.createTile(z, tx, ty, tileSize, apiProtocol, apiHost);
       }
+      
+      const tile = this.activeTiles.get(key);
+      if (tile && !tile.loaded) {
+        allTargetTilesLoaded = false;
+      }
+    }
+    
+    // Only perform the transition swap when all target zoom meshes are fully loaded.
+    // This prevents layout flickering and avoids disabling the floor plane under the camera target.
+    if (allTargetTilesLoaded) {
+      // 1. Enable new target tiles
+      for (const key of visibleKeys) {
+        const tile = this.activeTiles.get(key);
+        if (tile && tile.mesh) {
+          tile.mesh.setEnabled(true);
+        }
+      }
+      
+      // 2. Safely dispose of old tiles from other zoom levels or out-of-bounds areas
+      for (const [key, tile] of this.activeTiles.entries()) {
+        const parts = key.split("_");
+        const tileZ = parseInt(parts[0]);
+        
+        if (tileZ !== z || !visibleKeys.has(key)) {
+          if (tile.mesh) tile.mesh.dispose();
+          if (tile.material) tile.material.dispose();
+          if (tile.heightTex) tile.heightTex.dispose();
+          if (tile.normalTex) tile.normalTex.dispose();
+          this.activeTiles.delete(key);
+        }
+      }
+      
+      this.currentZoom = z;
     }
   }
   
   createTile(z, x, y, tileSize, apiProtocol, apiHost) {
     const key = `${z}_${x}_${y}`;
     
-    // High performance subdivision grid for rendering
-    const subdivisions = 64;
+    // Configure subdivision grid dynamically: higher resolution when zoomed out to retain overview shape,
+    // lower subdivision per tile when zoomed in close to maintain stable high frame rates.
+    let subdivisions = 64;
+    if (z === 0) subdivisions = 255;
+    else if (z === 1) subdivisions = 128;
+    else if (z === 2) subdivisions = 96;
+    else subdivisions = 64;
+    
     const mesh = BABYLON.MeshBuilder.CreateGround(
       `tile_${key}`,
       { width: tileSize, height: tileSize, subdivisions: subdivisions },
@@ -253,7 +303,8 @@ export class WeatherTerrain {
         uniforms: [
           "world", "view", "projection", "worldViewProjection",
           "uScale", "uMorphProgress", "activeLayer", "timeOfDay",
-          "uLightDir", "uLightColor", "uTileOffset", "uTileScale"
+          "uLightDir", "uLightColor", "uTileOffset", "uTileScale",
+          "uWeatherOffset", "uWeatherScale", "uIsZoomed"
         ],
         samplers: ["tHeight", "tHeightPrev", "tNormal", "tWeather"]
       }
@@ -266,6 +317,9 @@ export class WeatherTerrain {
     material.setFloat("timeOfDay", this.uniforms.timeOfDay);
     material.setVector3("uLightDir", this.uniforms.uLightDir);
     material.setColor3("uLightColor", this.uniforms.uLightColor);
+    material.setFloat("uIsZoomed", this.uniforms.uIsZoomed);
+    material.setVector2("uWeatherOffset", this.uniforms.uWeatherOffset);
+    material.setFloat("uWeatherScale", this.uniforms.uWeatherScale);
     
     // Bind tile-specific mapping offsets
     const tilesCount = Math.pow(2, z);
@@ -279,11 +333,23 @@ export class WeatherTerrain {
     // Hide mesh until texture content is fully ready to prevent pops
     mesh.setEnabled(false);
     
+    const tileObj = {
+      mesh,
+      material,
+      heightTex: null,
+      normalTex: null,
+      loaded: false
+    };
+    
     let texturesLoaded = 0;
     const checkLoaded = () => {
       texturesLoaded++;
       if (texturesLoaded === 2) {
-        mesh.setEnabled(true);
+        tileObj.loaded = true;
+        // If we are modifying tiles within the current active zoom level, enable immediately on load
+        if (z === this.currentZoom) {
+          mesh.setEnabled(true);
+        }
       }
     };
     
@@ -292,7 +358,7 @@ export class WeatherTerrain {
       heightUrl,
       this.scene,
       true,
-      true, // invertY: true
+      false, // invertY must be false to prevent vertical flipping mirroring terrain geometry
       BABYLON.Texture.LINEAR_LINEAR,
       checkLoaded,
       (err) => console.warn(`Failed to load tile heightmap: ${heightUrl}`, err)
@@ -305,7 +371,7 @@ export class WeatherTerrain {
       normalUrl,
       this.scene,
       true,
-      true, // invertY: true
+      false, // invertY must be false to prevent vertical flipping mirroring normal vectors
       BABYLON.Texture.LINEAR_LINEAR,
       checkLoaded,
       (err) => console.warn(`Failed to load tile normalmap: ${normalUrl}`, err)
@@ -317,21 +383,31 @@ export class WeatherTerrain {
     material.setTexture("tHeightPrev", heightTex);
     material.setTexture("tNormal", normalTex);
     
+    tileObj.heightTex = heightTex;
+    tileObj.normalTex = normalTex;
+    
     mesh.material = material;
     
-    this.activeTiles.set(key, {
-      mesh,
-      material,
-      heightTex,
-      normalTex
-    });
+    this.activeTiles.set(key, tileObj);
   }
   
-  updateUniforms(activeLayer, timeOfDay, lightDir, lightColor) {
+  updateUniforms(activeLayer, timeOfDay, lightDir, lightColor, isZoomed, focusX, focusY) {
     this.uniforms.activeLayer = activeLayer;
     this.uniforms.timeOfDay = timeOfDay;
     this.uniforms.uLightDir.copyFrom(lightDir);
     this.uniforms.uLightColor.copyFrom(lightColor);
+    
+    // Calculate regional weather texture viewport boundaries
+    const serverWidth = 1024;
+    const chunkScale = 256.0 / serverWidth;
+    let fx = Math.floor(focusX * serverWidth) - 128;
+    let fy = Math.floor(focusY * serverWidth) - 128;
+    fx = Math.max(0, Math.min(serverWidth - 256, fx));
+    fy = Math.max(0, Math.min(serverWidth - 256, fy));
+    
+    this.uniforms.uIsZoomed = isZoomed ? 1.0 : 0.0;
+    this.uniforms.uWeatherOffset.set(fx / serverWidth, fy / serverWidth);
+    this.uniforms.uWeatherScale = chunkScale;
     
     for (const tile of this.activeTiles.values()) {
       if (tile.material) {
@@ -339,6 +415,9 @@ export class WeatherTerrain {
         tile.material.setFloat("timeOfDay", timeOfDay);
         tile.material.setVector3("uLightDir", lightDir);
         tile.material.setColor3("uLightColor", lightColor);
+        tile.material.setFloat("uIsZoomed", this.uniforms.uIsZoomed);
+        tile.material.setVector2("uWeatherOffset", this.uniforms.uWeatherOffset);
+        tile.material.setFloat("uWeatherScale", this.uniforms.uWeatherScale);
       }
     }
   }
