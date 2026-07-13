@@ -91,6 +91,7 @@ export class WeatherRenderer {
     this.camera.lowerRadiusLimit = 20;
     this.camera.upperRadiusLimit = 4000;
     this.camera.wheelDeltaPercentage = 0.015; // Logarithmic-style scroll speed proportional to radius
+    this.camera.panningSensibility = 150; // Make panning responsive for 2000x2000 grid
     
     // 4. Setup Lights & Adaptive CSM
     this.initLights();
