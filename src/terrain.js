@@ -358,7 +358,7 @@ export class WeatherTerrain {
       heightUrl,
       this.scene,
       true,
-      false, // invertY must be false to prevent vertical flipping mirroring terrain geometry
+      true, // invertY must be true to match Babylon texture coordinate mapping
       BABYLON.Texture.LINEAR_LINEAR,
       checkLoaded,
       (err) => console.warn(`Failed to load tile heightmap: ${heightUrl}`, err)
@@ -371,7 +371,7 @@ export class WeatherTerrain {
       normalUrl,
       this.scene,
       true,
-      false, // invertY must be false to prevent vertical flipping mirroring normal vectors
+      true, // invertY must be true to match Babylon texture coordinate mapping
       BABYLON.Texture.LINEAR_LINEAR,
       checkLoaded,
       (err) => console.warn(`Failed to load tile normalmap: ${normalUrl}`, err)
@@ -406,7 +406,7 @@ export class WeatherTerrain {
     fy = Math.max(0, Math.min(serverWidth - 256, fy));
     
     this.uniforms.uIsZoomed = isZoomed ? 1.0 : 0.0;
-    this.uniforms.uWeatherOffset.set(fx / serverWidth, fy / serverWidth);
+    this.uniforms.uWeatherOffset.set(fx / serverWidth, (serverWidth - 256 - fy) / serverWidth);
     this.uniforms.uWeatherScale = chunkScale;
     
     for (const tile of this.activeTiles.values()) {
