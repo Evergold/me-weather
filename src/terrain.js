@@ -240,14 +240,16 @@ export class WeatherTerrain {
       this.weatherTex.dispose();
     }
     
-    this.weatherTex = BABYLON.RawTexture.CreateRGBAFloatTexture(
+    this.weatherTex = new BABYLON.RawTexture(
       data,
       this.terrainWidth,
       this.terrainHeight,
+      BABYLON.Engine.TEXTUREFORMAT_RGBA,
       this.scene,
       false,
       false,
-      BABYLON.Texture.NEAREST_SAMPLINGMODE
+      BABYLON.Texture.NEAREST_SAMPLINGMODE,
+      BABYLON.Engine.TEXTURETYPE_FLOAT
     );
     
     this.material.setTexture("tWeather", this.weatherTex);
