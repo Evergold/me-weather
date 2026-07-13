@@ -228,18 +228,9 @@ export class WeatherTerrain {
   }
 
   initTreeTemplate() {
-    // Procedural Low-poly Pine Tree Template
-    const trunk = BABYLON.MeshBuilder.CreateCylinder("trunk", { height: 1.0, diameterTop: 0.15, diameterBottom: 0.25, tessellation: 4 }, this.scene);
-    trunk.position.y = 0.5;
-    
-    const trunkColors = [];
-    for (let i = 0; i < trunk.getTotalVertices(); i++) {
-      trunkColors.push(0.38, 0.26, 0.16, 1.0); // Brown
-    }
-    trunk.setVerticesData(BABYLON.VertexBuffer.ColorKind, trunkColors);
-
+    // Procedural Low-poly Pine Cone foliage template (bypasses MergeMeshes to prevent strict GLSL/WebGL hangs)
     const foliage = BABYLON.MeshBuilder.CreateCylinder("foliage", { height: 2.2, diameterTop: 0.0, diameterBottom: 1.2, tessellation: 5 }, this.scene);
-    foliage.position.y = 2.1;
+    foliage.position.y = 1.1; // Center pivot at bottom
     
     const foliageColors = [];
     for (let i = 0; i < foliage.getTotalVertices(); i++) {
@@ -247,7 +238,7 @@ export class WeatherTerrain {
     }
     foliage.setVerticesData(BABYLON.VertexBuffer.ColorKind, foliageColors);
 
-    this.treeTemplate = BABYLON.Mesh.MergeMeshes([trunk, foliage], true, true, undefined, false, true);
+    this.treeTemplate = foliage;
     this.treeTemplate.setEnabled(false);
     
     const treeMat = new BABYLON.StandardMaterial("treeMat", this.scene);
@@ -333,6 +324,7 @@ export class WeatherTerrain {
       }
       
       // 2. Safely dispose of old tiles from other zoom levels or out-of-bounds areas
+      const keysToDelete = [];
       for (const [key, tile] of this.activeTiles.entries()) {
         const parts = key.split("_");
         const tileZ = parseInt(parts[0]);
@@ -350,8 +342,11 @@ export class WeatherTerrain {
             }
             tile.spsMesh.dispose();
           }
-          this.activeTiles.delete(key);
+          keysToDelete.push(key);
         }
+      }
+      for (const key of keysToDelete) {
+        this.activeTiles.delete(key);
       }
       
       this.currentZoom = z;
@@ -422,8 +417,12 @@ export class WeatherTerrain {
       material.setTexture("tWeather", this.weatherTex);
     }
     
-    // Hide mesh until texture content is fully ready to prevent pops
-    mesh.setEnabled(false);
+    // Keep the very first tiles enabled immediately to prevent camera raycast target jumps/freezes on launch
+    if (this.activeTiles.size === 0) {
+      mesh.setEnabled(true);
+    } else {
+      mesh.setEnabled(false);
+    }
     
     const tileObj = {
       mesh,
