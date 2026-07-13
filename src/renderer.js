@@ -91,7 +91,7 @@ export class WeatherRenderer {
     this.camera.lowerRadiusLimit = 20;
     this.camera.upperRadiusLimit = 4000;
     this.camera.wheelDeltaPercentage = 0.015; // Logarithmic-style scroll speed proportional to radius
-    this.camera.panningSensibility = 150; // Make panning responsive for 2000x2000 grid
+    this.camera.panningSensibility = 1000; // 1-to-1 panning mapping relative to camera radius
     
     // 4. Setup Lights & Adaptive CSM
     this.initLights();
@@ -418,7 +418,16 @@ export class WeatherRenderer {
   attachCameraControls() {
     if (this.camera && this.canvas) {
       console.log(`[Client Renderer] attachCameraControls: Target before attach: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
-      this.camera.attachControl(this.canvas, true, true);
+      
+      // Explicitly bind panning to Ctrl + Left Mouse Button (0)
+      this.camera.attachControl(this.canvas, true, true, 0);
+      
+      // Set properties directly on pointers input to guarantee correctness
+      if (this.camera.inputs && this.camera.inputs.attached && this.camera.inputs.attached.pointers) {
+        this.camera.inputs.attached.pointers.useCtrlForPanning = true;
+        this.camera.inputs.attached.pointers.panningMouseButton = 0;
+      }
+      
       console.log(`[Client Renderer] attachCameraControls: Target after attach: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
     }
   }
