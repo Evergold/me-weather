@@ -349,6 +349,9 @@ export class WeatherRenderer {
     this.isOverhead = enable;
     if (!this.camera) return;
     
+    const oldInertia = this.camera.inertia;
+    this.camera.inertia = 0;
+
     if (enable) {
       // Calculate radius to fit the 2000x2000 map plane perfectly on screen
       const fov = this.camera.fov; // vertical fov in radians
@@ -361,6 +364,8 @@ export class WeatherRenderer {
       this.camera.beta = 0.08; // slightly off-center overhead to prevent gimbal lock / flip
       this.camera.radius = fitRadius;
       
+      this.camera.update();
+
       // Lock rotation limits to prevent user from dragging to rotate in 2D view
       this.camera.lowerAlphaLimit = -Math.PI / 2;
       this.camera.upperAlphaLimit = -Math.PI / 2;
@@ -373,9 +378,14 @@ export class WeatherRenderer {
       this.camera.lowerBetaLimit = 0.01;
       this.camera.upperBetaLimit = Math.PI / 2.1;
       
-      this.camera.position.set(0, 800, -1000);
       this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
+      this.camera.alpha = -Math.PI / 2;
+      this.camera.beta = Math.PI / 3.6;
+      this.camera.radius = 1300;
+      
+      this.camera.update();
     }
+    this.camera.inertia = oldInertia;
   }
   
   cacheTerrain(image) {
@@ -385,8 +395,18 @@ export class WeatherRenderer {
   resetCameraToDefault() {
     if (!this.camera) return;
     console.log(`[Client Renderer] resetCameraToDefault: entry. Target before: ${this.camera.target.toString()} Radius before: ${this.camera.radius}`);
-    this.camera.position.set(0, 800, -1000);
+    
+    const oldInertia = this.camera.inertia;
+    this.camera.inertia = 0;
+    
     this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
+    this.camera.alpha = -Math.PI / 2;
+    this.camera.beta = Math.PI / 3.6;
+    this.camera.radius = 1300;
+    
+    this.camera.update();
+    this.camera.inertia = oldInertia;
+    
     console.log(`[Client Renderer] resetCameraToDefault: exit. Position: ${this.camera.position.toString()} Target: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
   }
 
