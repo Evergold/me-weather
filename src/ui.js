@@ -121,15 +121,11 @@ export class WeatherUI {
         }
         window.dispatchEvent(new Event('resize'));
         
-        // Reset camera default target/position now that the canvas size is correct
-        if (this.renderer) {
-          this.renderer.resetCameraToDefault();
-        }
-        
-        // Attach camera controls now that layout is completely stable and canvas is visible,
+        // Reset camera default target/position and attach controls now that layout is completely stable and canvas is visible,
         // using a short delay to allow the style transition to settle and avoid snapping inputs.
         if (this.renderer) {
           setTimeout(() => {
+            this.renderer.resetCameraToDefault();
             this.renderer.attachCameraControls();
           }, 250);
         }
@@ -176,10 +172,8 @@ export class WeatherUI {
       }
       window.dispatchEvent(new Event('resize'));
       if (this.renderer) {
-        this.renderer.resetCameraToDefault();
-      }
-      if (this.renderer) {
         setTimeout(() => {
+          this.renderer.resetCameraToDefault();
           this.renderer.attachCameraControls();
         }, 250);
       }
@@ -199,10 +193,8 @@ export class WeatherUI {
       }
       window.dispatchEvent(new Event('resize'));
       if (this.renderer) {
-        this.renderer.resetCameraToDefault();
-      }
-      if (this.renderer) {
         setTimeout(() => {
+          this.renderer.resetCameraToDefault();
           this.renderer.attachCameraControls();
         }, 250);
       }
@@ -232,10 +224,8 @@ export class WeatherUI {
       }
       window.dispatchEvent(new Event('resize'));
       if (this.renderer) {
-        this.renderer.resetCameraToDefault();
-      }
-      if (this.renderer) {
         setTimeout(() => {
+          this.renderer.resetCameraToDefault();
           this.renderer.attachCameraControls();
         }, 250);
       }
