@@ -29,7 +29,7 @@ class WeatherPhysics:
         self.windY = np.zeros(self.size, dtype=np.float32)
         self.rain = np.zeros(self.size, dtype=np.float32)
         self.snow = np.zeros(self.size, dtype=np.float32)
-        self.is_water = np.zeros(self.size, dtype=np.uint8)
+        self.is_water = np.zeros(self.size, dtype=np.uint32)
 
         # Pre-allocated arrays to optimize memory allocation and performance during CPU updates
         self.lat_grid = np.repeat((np.arange(self.height, dtype=np.float32) / self.height) * 20.0 - 8.0, self.width)
@@ -90,13 +90,272 @@ class WeatherPhysics:
             "windY": self.size * 4,
             "rain": self.size * 4,
             "snow": self.size * 4,
-            "is_water": self.size,
+            "is_water": self.size * 4,
         }
         for name, size in buffer_sizes.items():
             self.gpu_buffers[name] = self.device.create_buffer(
                 size=size,
                 usage=wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_DST | wgpu.BufferUsage.COPY_SRC
             )
+        self.setup_gpu_pipelines()
+
+    def setup_gpu_pipelines(self):
+        # Create uniform params buffer (32 bytes)
+        self.gpu_buffers["params"] = self.device.create_buffer(
+            size=32,
+            usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST
+        )
+        
+        # Create moisture_temp buffer
+        self.gpu_buffers["moisture_temp"] = self.device.create_buffer(
+            size=self.size * 4,
+            usage=wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_DST | wgpu.BufferUsage.COPY_SRC
+        )
+        
+        # WGSL Shader 1 (Thermodynamics and Pressure)
+        shader1_code = """
+        struct SimParams {
+            width: u32,
+            height: u32,
+            dt: f32,
+            solar_intensity: f32,
+            season_base_temp: f32,
+            global_wind_vx: f32,
+            global_wind_vy: f32,
+            decouple_hydrology: u32,
+        };
+
+        @group(0) @binding(0) var<uniform> params: SimParams;
+        @group(0) @binding(1) var<storage, read> heightmap: array<f32>;
+        @group(0) @binding(2) var<storage, read_write> temperature: array<f32>;
+        @group(0) @binding(3) var<storage, read_write> pressure: array<f32>;
+
+        @compute @workgroup_size(16, 16)
+        fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+            let col = id.x;
+            let row = id.y;
+            if (col >= params.width || row >= params.height) {
+                return;
+            }
+            let idx = row * params.width + col;
+            
+            let lat = (f32(row) / f32(params.height)) * 20.0 - 8.0;
+            let h = heightmap[idx];
+            let lapse_rate = h * 28.0;
+            let solar_warming = params.solar_intensity * (15.0 - h * 5.0);
+            
+            let temp = params.season_base_temp + lat - lapse_rate + solar_warming;
+            temperature[idx] = temp;
+            
+            let elevation_pressure_drop = h * 120.0;
+            let thermal_pressure_shift = (temp - 15.0) * -1.5;
+            pressure[idx] = 1013.0 - elevation_pressure_drop + thermal_pressure_shift;
+        }
+        """
+        
+        # WGSL Shader 2 (Wind, Evaporation, Advection, Precipitation)
+        shader2_code = """
+        struct SimParams {
+            width: u32,
+            height: u32,
+            dt: f32,
+            solar_intensity: f32,
+            season_base_temp: f32,
+            global_wind_vx: f32,
+            global_wind_vy: f32,
+            decouple_hydrology: u32,
+        };
+
+        @group(0) @binding(0) var<uniform> params: SimParams;
+        @group(0) @binding(1) var<storage, read> heightmap: array<f32>;
+        @group(0) @binding(2) var<storage, read> temperature: array<f32>;
+        @group(0) @binding(3) var<storage, read> pressure: array<f32>;
+        @group(0) @binding(4) var<storage, read_write> moisture: array<f32>;
+        @group(0) @binding(5) var<storage, read_write> windX: array<f32>;
+        @group(0) @binding(6) var<storage, read_write> windY: array<f32>;
+        @group(0) @binding(7) var<storage, read_write> rain: array<f32>;
+        @group(0) @binding(8) var<storage, read_write> snow: array<f32>;
+        @group(0) @binding(9) var<storage, read> is_water: array<u32>;
+        @group(0) @binding(10) var<storage, read_write> moisture_temp: array<f32>;
+
+        @compute @workgroup_size(16, 16)
+        fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+            let col = id.x;
+            let row = id.y;
+            let w = params.width;
+            let h = params.height;
+            
+            if (col >= w || row >= h) {
+                return;
+            }
+            let idx = row * w + col;
+            
+            // 1. Wind fields gradient
+            var dpdx = 0.0;
+            var dpdy = 0.0;
+            
+            if (col > 0u && col < w - 1u) {
+                dpdx = (pressure[idx + 1u] - pressure[idx - 1u]) / 2.0;
+            }
+            
+            if (row > 0u && row < h - 1u) {
+                dpdy = (pressure[idx + w] - pressure[idx - w]) / 2.0;
+            }
+            
+            var vx = -dpdx * 0.15;
+            var vy = -dpdy * 0.15;
+            
+            let coriolis = 0.08 * (1.0 - f32(row) / f32(h));
+            let cor_x = vy * coriolis;
+            let cor_y = -vx * coriolis;
+            vx += cor_x;
+            vy += cor_y;
+            
+            vx += params.global_wind_vx;
+            vy += params.global_wind_vy;
+            
+            // Mountain Blocking
+            var grad_x = 0.0;
+            var grad_y = 0.0;
+            
+            if (col > 0u) {
+                grad_x = heightmap[idx] - heightmap[idx - 1u];
+            }
+            if (row > 0u) {
+                grad_y = heightmap[idx] - heightmap[idx - w];
+            }
+            
+            if (grad_x > 0.0) {
+                vx = vx * max(0.05, 1.0 - grad_x * 8.0);
+            }
+            if (grad_y > 0.0) {
+                vy = vy * max(0.05, 1.0 - grad_y * 8.0);
+            }
+            
+            windX[idx] = vx;
+            windY[idx] = vy;
+            
+            // 2. Moisture Evaporation
+            let local_water = is_water[idx];
+            let temp_evap = max(0.01, (temperature[idx] + 10.0) * 0.015) * params.dt;
+            
+            // 3. Advection (Semi-Lagrangian)
+            let prev_x = f32(col) - vx * params.dt * 15.0;
+            let prev_y = f32(row) - vy * params.dt * 15.0;
+            
+            let px = clamp(prev_x, 0.5, f32(w) - 1.5);
+            let py = clamp(prev_y, 0.5, f32(h) - 1.5);
+            
+            let x0 = u32(floor(px));
+            let x1 = x0 + 1u;
+            let y0 = u32(floor(py));
+            let y1 = y0 + 1u;
+            
+            let fx = px - f32(x0);
+            let fy = py - f32(y0);
+            
+            let val00 = moisture[y0 * w + x0];
+            let val10 = moisture[y0 * w + x1];
+            let val01 = moisture[y1 * w + x0];
+            let val11 = moisture[y1 * w + x1];
+            
+            let val0 = val00 * (1.0 - fx) + val10 * fx;
+            let val1 = val01 * (1.0 - fx) + val11 * fx;
+            let advected_moist = val0 * (1.0 - fy) + val1 * fy;
+            
+            var final_moist = advected_moist;
+            if (local_water == 1u) {
+                final_moist = min(1.0, final_moist + temp_evap);
+            }
+            
+            // 4. Precipitation
+            var rain_val = 0.0;
+            var snow_val = 0.0;
+            
+            if (params.decouple_hydrology == 0u) {
+                let saturation_threshold = max(0.35, 0.6 + (temperature[idx] - 10.0) * 0.015);
+                if (final_moist > saturation_threshold) {
+                    let excess = final_moist - saturation_threshold;
+                    
+                    let next_col = min(w - 1u, col + 1u);
+                    let next_row = min(h - 1u, row + 1u);
+                    let h_diff_x = heightmap[row * w + next_col] - heightmap[idx];
+                    let h_diff_y = heightmap[next_row * w + col] - heightmap[idx];
+                    
+                    let lift = max(0.0, vx * h_diff_x + vy * h_diff_y) * 1.5;
+                    
+                    var precip_rate = excess * 0.4 + lift * final_moist * 0.5;
+                    precip_rate = min(1.0, precip_rate * params.dt * 5.0);
+                    
+                    if (temperature[idx] < 0.5) {
+                        snow_val = precip_rate;
+                    } else {
+                        rain_val = precip_rate;
+                    }
+                    
+                    final_moist = max(0.05, final_moist - precip_rate * 0.8);
+                }
+                
+                if (local_water == 0u && rain_val + snow_val <= 0.01) {
+                    final_moist = max(0.1, final_moist - 0.015 * params.dt);
+                }
+            }
+            
+            rain[idx] = rain_val;
+            snow[idx] = snow_val;
+            moisture_temp[idx] = final_moist;
+        }
+        """
+        
+        # Compile modules
+        sm1 = self.device.create_shader_module(code=shader1_code)
+        sm2 = self.device.create_shader_module(code=shader2_code)
+        
+        # Create pipelines
+        self.gpu_pipelines = {
+            "thermo": self.device.create_compute_pipeline(
+                layout="auto",
+                compute={"module": sm1, "entry_point": "main"}
+            ),
+            "wind_moist": self.device.create_compute_pipeline(
+                layout="auto",
+                compute={"module": sm2, "entry_point": "main"}
+            )
+        }
+        
+        # Bind group entries
+        bg1_entries = [
+            {"binding": 0, "resource": {"buffer": self.gpu_buffers["params"], "offset": 0, "size": 32}},
+            {"binding": 1, "resource": {"buffer": self.gpu_buffers["heightmap"], "offset": 0, "size": self.size * 4}},
+            {"binding": 2, "resource": {"buffer": self.gpu_buffers["temperature"], "offset": 0, "size": self.size * 4}},
+            {"binding": 3, "resource": {"buffer": self.gpu_buffers["pressure"], "offset": 0, "size": self.size * 4}}
+        ]
+        
+        self.gpu_bind_groups = {
+            "thermo": self.device.create_bind_group(
+                layout=self.gpu_pipelines["thermo"].get_bind_group_layout(0),
+                entries=bg1_entries
+            )
+        }
+        
+        bg2_entries = [
+            {"binding": 0, "resource": {"buffer": self.gpu_buffers["params"], "offset": 0, "size": 32}},
+            {"binding": 1, "resource": {"buffer": self.gpu_buffers["heightmap"], "offset": 0, "size": self.size * 4}},
+            {"binding": 2, "resource": {"buffer": self.gpu_buffers["temperature"], "offset": 0, "size": self.size * 4}},
+            {"binding": 3, "resource": {"buffer": self.gpu_buffers["pressure"], "offset": 0, "size": self.size * 4}},
+            {"binding": 4, "resource": {"buffer": self.gpu_buffers["moisture"], "offset": 0, "size": self.size * 4}},
+            {"binding": 5, "resource": {"buffer": self.gpu_buffers["windX"], "offset": 0, "size": self.size * 4}},
+            {"binding": 6, "resource": {"buffer": self.gpu_buffers["windY"], "offset": 0, "size": self.size * 4}},
+            {"binding": 7, "resource": {"buffer": self.gpu_buffers["rain"], "offset": 0, "size": self.size * 4}},
+            {"binding": 8, "resource": {"buffer": self.gpu_buffers["snow"], "offset": 0, "size": self.size * 4}},
+            {"binding": 9, "resource": {"buffer": self.gpu_buffers["is_water"], "offset": 0, "size": self.size * 4}},
+            {"binding": 10, "resource": {"buffer": self.gpu_buffers["moisture_temp"], "offset": 0, "size": self.size * 4}}
+        ]
+        
+        self.gpu_bind_groups["wind_moist"] = self.device.create_bind_group(
+            layout=self.gpu_pipelines["wind_moist"].get_bind_group_layout(0),
+            entries=bg2_entries
+        )
 
     def load_heightmap(self, img_path):
         """Loads a heightmap image and initializes physical fields."""
@@ -112,7 +371,7 @@ class WeatherPhysics:
         self.heightmap = raw_data.flatten()
 
         # Ocean is defined as height < 0.08
-        self.is_water = (self.heightmap < 0.08).astype(np.uint8)
+        self.is_water = (self.heightmap < 0.08).astype(np.uint32)
 
         # Initial conditions
         self.moisture = np.where(self.is_water == 1, 0.9, 0.4).astype(np.float32)
@@ -206,23 +465,25 @@ class WeatherPhysics:
         self.windX = vx.flatten()
         self.windY = vy.flatten()
 
-        # 3. Moisture Evaporation
+        # 3. Advection (Semi-Lagrangian) - performed before evaporation to match GPU pipeline
+        self.advect_cpu(self.moisture, self.windX, self.windY, dt)
+
+        # 4. Moisture Evaporation - performed on advected moisture to match GPU pipeline
         temp_evap = np.maximum(0.01, (self.temperature + 10.0) * 0.015) * dt
         self.moisture = np.where(self.is_water == 1, np.minimum(1.0, self.moisture + temp_evap), self.moisture)
-
-        # 4. Advection (Semi-Lagrangian)
-        self.advect_cpu(self.moisture, self.windX, self.windY, dt)
 
         # 5. Precipitation (Dynamic Hydrology)
         if not decouple_hydrology:
             saturation_threshold = np.maximum(0.35, 0.6 + (self.temperature - 10.0) * 0.015)
             excess = self.moisture - saturation_threshold
             
-            # Simple Orographic Condensation
-            # Flow elevation gradient
-            h_next_x = np.roll(self.heightmap, -1)
-            h_next_y = np.roll(self.heightmap, -self.width)
-            lift = np.maximum(0.0, self.windX * (h_next_x - self.heightmap) + self.windY * (h_next_y - self.heightmap)) * 1.5
+            # Boundary-clamped elevation gradient for Orographic Condensation (matches GPU)
+            h_diff_x = np.zeros_like(h)
+            h_diff_y = np.zeros_like(h)
+            h_diff_x[:, :-1] = h[:, 1:] - h[:, :-1]
+            h_diff_y[:-1, :] = h[1:, :] - h[:-1, :]
+            
+            lift = np.maximum(0.0, self.windX * h_diff_x.flatten() + self.windY * h_diff_y.flatten()) * 1.5
 
             precip_rate = np.zeros_like(self.moisture)
             cond_mask = self.moisture > saturation_threshold
@@ -278,11 +539,68 @@ class WeatherPhysics:
 
     def update_gpu(self, dt, time_of_day, season, global_wind_speed, global_wind_angle, global_temp_shift, decouple_hydrology):
         """GPU-accelerated physics tick using WGSL Compute Shaders."""
-        # For this milestone, we run the CPU solver which is fast enough for the tick,
-        # but setup the WGSL compute pipeline to progressively run tiles.
-        # Fallback to update_cpu for safety if shader compilation runs into driver discrepancies,
-        # ensuring it behaves identically.
-        self.update_cpu(dt, time_of_day, season, global_wind_speed, global_wind_angle, global_temp_shift, decouple_hydrology)
+        try:
+            solar_intensity = self.get_solar_intensity(time_of_day)
+            season_base_temp = self.get_season_base_temp(season) + global_temp_shift
+
+            rad = (global_wind_angle * math.pi) / 180.0
+            global_wind_vx = math.sin(rad) * (global_wind_speed * 0.08)
+            global_wind_vy = -math.cos(rad) * (global_wind_speed * 0.08)
+
+            # 1. Update uniforms (params) buffer
+            import struct
+            params_bytes = struct.pack(
+                "IIfffffI",
+                self.width,
+                self.height,
+                dt,
+                solar_intensity,
+                season_base_temp,
+                global_wind_vx,
+                global_wind_vy,
+                1 if decouple_hydrology else 0
+            )
+            self.device.queue.write_buffer(self.gpu_buffers["params"], 0, params_bytes)
+
+            # 2. Build and submit command encoder
+            encoder = self.device.create_command_encoder()
+            
+            # Pass 1: Thermo and Pressure
+            compute_pass1 = encoder.begin_compute_pass()
+            compute_pass1.set_pipeline(self.gpu_pipelines["thermo"])
+            compute_pass1.set_bind_group(0, self.gpu_bind_groups["thermo"])
+            compute_pass1.dispatch_workgroups(math.ceil(self.width / 16), math.ceil(self.height / 16), 1)
+            compute_pass1.end()
+
+            # Pass 2: Wind, Evap, Advect, Precip
+            compute_pass2 = encoder.begin_compute_pass()
+            compute_pass2.set_pipeline(self.gpu_pipelines["wind_moist"])
+            compute_pass2.set_bind_group(0, self.gpu_bind_groups["wind_moist"])
+            compute_pass2.dispatch_workgroups(math.ceil(self.width / 16), math.ceil(self.height / 16), 1)
+            compute_pass2.end()
+
+            # Pass 3: Copy moisture_temp back to moisture
+            encoder.copy_buffer_to_buffer(
+                self.gpu_buffers["moisture_temp"], 0,
+                self.gpu_buffers["moisture"], 0,
+                self.size * 4
+            )
+
+            # Submit to device queue
+            self.device.queue.submit([encoder.finish()])
+
+            # 3. Read back updated fields to CPU arrays to keep queries & telemetry synced
+            self.temperature = np.frombuffer(self.device.queue.read_buffer(self.gpu_buffers["temperature"]), dtype=np.float32).copy()
+            self.pressure = np.frombuffer(self.device.queue.read_buffer(self.gpu_buffers["pressure"]), dtype=np.float32).copy()
+            self.windX = np.frombuffer(self.device.queue.read_buffer(self.gpu_buffers["windX"]), dtype=np.float32).copy()
+            self.windY = np.frombuffer(self.device.queue.read_buffer(self.gpu_buffers["windY"]), dtype=np.float32).copy()
+            self.moisture = np.frombuffer(self.device.queue.read_buffer(self.gpu_buffers["moisture"]), dtype=np.float32).copy()
+            self.rain = np.frombuffer(self.device.queue.read_buffer(self.gpu_buffers["rain"]), dtype=np.float32).copy()
+            self.snow = np.frombuffer(self.device.queue.read_buffer(self.gpu_buffers["snow"]), dtype=np.float32).copy()
+        except Exception as e:
+            # Fallback to CPU update if any WebGPU pipeline/compilation errors occur
+            print(f"[Physics] GPU Simulation error: {e}. Falling back to CPU update.")
+            self.update_cpu(dt, time_of_day, season, global_wind_speed, global_wind_angle, global_temp_shift, decouple_hydrology)
 
     def get_weather_at(self, x, y):
         """Bilinear interpolation lookup of weather stats for a normalized coordinate (x,y in [0,1])."""
