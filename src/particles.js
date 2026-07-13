@@ -16,7 +16,7 @@ export class WeatherParticles {
   }
   
   initRain() {
-    this.rainSystem = new BABYLON.GPUParticleSystem("rain", { capacity: 4000 }, this.scene);
+    this.rainSystem = new BABYLON.ParticleSystem("rain", 4000, this.scene);
     this.rainSystem.particleTexture = new BABYLON.Texture("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", this.scene);
     this.rainSystem.emitter = new BABYLON.Vector3(0, 400, 0);
     this.rainSystem.minEmitBox = new BABYLON.Vector3(-1000, 0, -1000);
@@ -42,7 +42,7 @@ export class WeatherParticles {
   }
   
   initSnow() {
-    this.snowSystem = new BABYLON.GPUParticleSystem("snow", { capacity: 4000 }, this.scene);
+    this.snowSystem = new BABYLON.ParticleSystem("snow", 4000, this.scene);
     this.snowSystem.particleTexture = new BABYLON.Texture("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", this.scene);
     this.snowSystem.emitter = new BABYLON.Vector3(0, 400, 0);
     this.snowSystem.minEmitBox = new BABYLON.Vector3(-1000, 0, -1000);
