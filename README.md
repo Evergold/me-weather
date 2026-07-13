@@ -116,6 +116,7 @@ Brave's default shields and fingerprinting protections block WebGPU adapter acce
 2.  **Brave Flags**: Navigate to `brave://flags` in your address bar:
     *   **All Platforms**: Search for `#enable-unsafe-webgpu` and set it to **Enabled**.
     *   **Linux Specific**: Search for `#enable-vulkan` and set it to **Enabled** (Vulkan is required for WebGPU in Chromium on Linux).
+    *   *(Note: Windows and macOS use their native Direct3D 12 and Metal backends automatically. Do NOT enable Vulkan on Windows or macOS.)*
 3.  Relaunch Brave.
 
 ### 🦊 Firefox (Nightly, Developer Edition, & Release)
