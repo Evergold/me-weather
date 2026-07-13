@@ -383,15 +383,19 @@ export class WeatherRenderer {
 
   resetCameraToDefault() {
     if (!this.camera) return;
+    console.log(`[Client Renderer] resetCameraToDefault: entry. Target before: ${this.camera.target.toString()} Radius before: ${this.camera.radius}`);
     this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
     this.camera.alpha = -Math.PI / 2;
     this.camera.beta = Math.PI / 3.6;
     this.camera.radius = 1300;
+    console.log(`[Client Renderer] resetCameraToDefault: exit. Position: ${this.camera.position.toString()} Target: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
   }
 
   attachCameraControls() {
     if (this.camera && this.canvas) {
+      console.log(`[Client Renderer] attachCameraControls: Target before attach: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
       this.camera.attachControl(this.canvas, true);
+      console.log(`[Client Renderer] attachCameraControls: Target after attach: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
     }
   }
 }
