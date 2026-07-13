@@ -63,9 +63,11 @@ export class WeatherTerrain {
       void main() {
         vUv = uv;
         // Calculate global UV coordinates relative to the full terrain grid
-        vUvGlobal.x = uTileOffset.x * uTileScale + uv.x * uTileScale;
         float tilesCount = 1.0 / uTileScale;
-        vUvGlobal.y = ((tilesCount - 1.0 - uTileOffset.y) + uv.y) * uTileScale;
+        vUvGlobal = vec2(
+          uTileOffset.x * uTileScale + uv.x * uTileScale,
+          ((tilesCount - 1.0 - uTileOffset.y) + uv.y) * uTileScale
+        );
         
         // GPU-based Geomorphing (lerps height from prev to target to prevent LOD pops)
         float hTarget = texture2D(tHeight, uv).r;
