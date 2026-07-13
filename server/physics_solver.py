@@ -320,8 +320,7 @@ class WeatherPhysics:
         }
 
     def get_serialized_grid(self, downsample_factor=8):
-        """Downsamples and packages active weather layers into a flat binary array (quantized float16)."""
-        # Downsample grid dynamically for WebSocket delivery based on the downsample factor
+        """Downsamples and packages active weather layers into a flat binary array (Normalized Integer Mapping)."""
         ds_w = self.width // downsample_factor
         ds_h = self.height // downsample_factor
 
@@ -333,7 +332,7 @@ class WeatherPhysics:
         rain_2d = self.rain.reshape((self.height, self.width))
         snow_2d = self.snow.reshape((self.height, self.width))
 
-        # Downsample using simple striding (extremely fast)
+        # Downsample using simple striding
         ds_temp = temp_2d[::downsample_factor, ::downsample_factor]
         ds_moist = moist_2d[::downsample_factor, ::downsample_factor]
         ds_wx = wx_2d[::downsample_factor, ::downsample_factor]
@@ -341,10 +340,17 @@ class WeatherPhysics:
         ds_rain = rain_2d[::downsample_factor, ::downsample_factor]
         ds_snow = snow_2d[::downsample_factor, ::downsample_factor]
 
-        # Stack into a single composite float16 binary array
-        # Order: [temp, moist, windX, windY, rain, snow]
-        stacked = np.stack([ds_temp, ds_moist, ds_wx, ds_wy, ds_rain, ds_snow], axis=0)
-        return stacked.astype(np.float16).tobytes()
+        # Quantize layers: temp [-20, 50] to uint16, wind [-60, 60] to uint16, others [0, 1] to uint8
+        temp_q = np.clip((ds_temp + 20.0) / 70.0 * 65535.0, 0, 65535).astype(np.uint16)
+        moist_q = np.clip(ds_moist * 255.0, 0, 255).astype(np.uint8)
+        wx_q = np.clip((ds_wx + 60.0) / 120.0 * 65535.0, 0, 65535).astype(np.uint16)
+        wy_q = np.clip((ds_wy + 60.0) / 120.0 * 65535.0, 0, 65535).astype(np.uint16)
+        rain_q = np.clip(ds_rain * 255.0, 0, 255).astype(np.uint8)
+        snow_q = np.clip(ds_snow * 255.0, 0, 255).astype(np.uint8)
+
+        # Concatenate bytes: ordered [temp, moist, windX, windY, rain, snow]
+        return (temp_q.tobytes() + moist_q.tobytes() + wx_q.tobytes() + 
+                wy_q.tobytes() + rain_q.tobytes() + snow_q.tobytes())
 
     def get_serialized_chunk(self, x_start, y_start, chunk_size=1024):
         """Extracts a high-resolution chunk of weather statistics for zoomed-in rendering."""
@@ -368,5 +374,13 @@ class WeatherPhysics:
             rain_2d = np.pad(rain_2d, ((0, chunk_size - h_chunk), (0, chunk_size - w_chunk)), mode='edge')
             snow_2d = np.pad(snow_2d, ((0, chunk_size - h_chunk), (0, chunk_size - w_chunk)), mode='edge')
 
-        stacked = np.stack([temp_2d, moist_2d, wx_2d, wy_2d, rain_2d, snow_2d], axis=0)
-        return stacked.astype(np.float16).tobytes()
+        # Quantize layers
+        temp_q = np.clip((temp_2d + 20.0) / 70.0 * 65535.0, 0, 65535).astype(np.uint16)
+        moist_q = np.clip(moist_2d * 255.0, 0, 255).astype(np.uint8)
+        wx_q = np.clip((wx_2d + 60.0) / 120.0 * 65535.0, 0, 65535).astype(np.uint16)
+        wy_q = np.clip((wy_2d + 60.0) / 120.0 * 65535.0, 0, 65535).astype(np.uint16)
+        rain_q = np.clip(rain_2d * 255.0, 0, 255).astype(np.uint8)
+        snow_q = np.clip(snow_2d * 255.0, 0, 255).astype(np.uint8)
+
+        return (temp_q.tobytes() + moist_q.tobytes() + wx_q.tobytes() + 
+                wy_q.tobytes() + rain_q.tobytes() + snow_q.tobytes())

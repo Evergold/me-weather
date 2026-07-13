@@ -7,26 +7,7 @@
  * holds local downsampled overlays/chunks, and bilinearly interpolates stats for UI hover telemetry.
  */
 
-// Float16 Decoder Helper
-function decodeFloat16(buffer) {
-  const val = new Uint16Array(buffer);
-  const len = val.length;
-  const float32 = new Float32Array(len);
-  for (let i = 0; i < len; i++) {
-    const h = val[i];
-    const s = (h & 0x8000) >> 15;
-    const e = (h & 0x7c00) >> 10;
-    const f = h & 0x03ff;
-    if (e === 0) {
-      float32[i] = (s ? -1 : 1) * Math.pow(2, -14) * (f / 1024);
-    } else if (e === 31) {
-      float32[i] = f ? NaN : ((s ? -1 : 1) * Infinity);
-    } else {
-      float32[i] = (s ? -1 : 1) * Math.pow(2, e - 15) * (1 + f / 1024);
-    }
-  }
-  return float32;
-}
+// Normalized Integer Mapping Decoders are built directly into unpackBinaryFrame.
 
 export class WeatherPhysics {
   constructor(width = 1024, height = 1024) {
@@ -119,25 +100,34 @@ export class WeatherPhysics {
   }
 
   unpackBinaryFrame(buffer) {
-    const view = new DataView(buffer);
-    const typeHeader = view.getUint8(0); // first byte
+    const typeHeader = new Uint8Array(buffer, 0, 1)[0];
     const payload = buffer.slice(1);
-
-    // Dynamic type check: 0 = Global Overlay, 1 = High-Res Viewport Chunk
-    // Decode the Float16 flat array
-    const decoded = decodeFloat16(payload);
-
-    // Stride check: grid has width * height cells, with 6 stacked fields:
-    // [temp, moist, windX, windY, rain, snow]
     const gridSize = this.size;
-    
-    // Copy slices
-    this.temperature.set(decoded.subarray(0, gridSize));
-    this.moisture.set(decoded.subarray(gridSize, gridSize * 2));
-    this.windX.set(decoded.subarray(gridSize * 2, gridSize * 3));
-    this.windY.set(decoded.subarray(gridSize * 3, gridSize * 4));
-    this.rain.set(decoded.subarray(gridSize * 4, gridSize * 5));
-    this.snow.set(decoded.subarray(gridSize * 5, gridSize * 6));
+
+    // Ordered byte offset blocks:
+    // temp (uint16 * gridSize): 0 to gridSize * 2
+    // moist (uint8 * gridSize): gridSize * 2 to gridSize * 3
+    // windX (uint16 * gridSize): gridSize * 3 to gridSize * 5
+    // windY (uint16 * gridSize): gridSize * 5 to gridSize * 7
+    // rain (uint8 * gridSize): gridSize * 7 to gridSize * 8
+    // snow (uint8 * gridSize): gridSize * 8 to gridSize * 9
+
+    const tempView = new Uint16Array(payload, 0, gridSize);
+    const moistView = new Uint8Array(payload, gridSize * 2, gridSize);
+    const windXView = new Uint16Array(payload, gridSize * 3, gridSize);
+    const windYView = new Uint16Array(payload, gridSize * 5, gridSize);
+    const rainView = new Uint8Array(payload, gridSize * 7, gridSize);
+    const snowView = new Uint8Array(payload, gridSize * 8, gridSize);
+
+    // Decode normalized values back to physics floats
+    for (let i = 0; i < gridSize; i++) {
+      this.temperature[i] = (tempView[i] / 65535.0) * 70.0 - 20.0;
+      this.moisture[i] = moistView[i] / 255.0;
+      this.windX[i] = (windXView[i] / 65535.0) * 120.0 - 60.0;
+      this.windY[i] = (windYView[i] / 65535.0) * 120.0 - 60.0;
+      this.rain[i] = rainView[i] / 255.0;
+      this.snow[i] = snowView[i] / 255.0;
+    }
   }
 
   sendSettings(settings = {}) {
