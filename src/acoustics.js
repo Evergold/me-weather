@@ -29,6 +29,24 @@ export class WeatherAcoustics {
       
       this.isInitialized = true;
       console.log("[Client Acoustics] Audio Context and generators initialized.");
+
+      // Setup one-time user interaction listener to resume AudioContext cleanly without console warnings
+      const resumeAudio = () => {
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume().then(() => {
+            console.log("[Client Acoustics] AudioContext resumed successfully by user interaction.");
+          });
+        }
+        // Clean up listeners
+        window.removeEventListener('click', resumeAudio);
+        window.removeEventListener('mousedown', resumeAudio);
+        window.removeEventListener('keydown', resumeAudio);
+        window.removeEventListener('touchstart', resumeAudio);
+      };
+      window.addEventListener('click', resumeAudio);
+      window.addEventListener('mousedown', resumeAudio);
+      window.addEventListener('keydown', resumeAudio);
+      window.addEventListener('touchstart', resumeAudio);
     } catch (e) {
       console.warn("[Client Acoustics] Audio initialization failed:", e);
     }
@@ -43,12 +61,10 @@ export class WeatherAcoustics {
     }
     
     const whiteNoise = this.ctx.createBufferSource(noiseBuffer);
-    whiteNoise.buffer = noiseBuffer;
-    whiteNoise.loop = true;
-    
     this.windFilter = this.ctx.createBiquadFilter();
     this.windFilter.type = 'bandpass';
-    this.windFilter.Q.value = 3.0;
+    this.windFilter.frequency.value = 400;
+    this.windFilter.Q.value = 2.0;
     
     this.windGain = this.ctx.createGain();
     this.windGain.gain.value = 0.0;
@@ -56,13 +72,16 @@ export class WeatherAcoustics {
     whiteNoise.connect(this.windFilter);
     this.windFilter.connect(this.windGain);
     this.windGain.connect(this.lowPass);
+    
+    // Connect filter chain to output
     this.lowPass.connect(this.ctx.destination);
     
+    whiteNoise.loop = true;
     whiteNoise.start(0);
   }
   
   initRainGenerator() {
-    const bufferSize = 1 * this.ctx.sampleRate;
+    const bufferSize = 2 * this.ctx.sampleRate;
     const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
     const output = noiseBuffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) {
@@ -70,7 +89,6 @@ export class WeatherAcoustics {
     }
     
     const whiteNoise = this.ctx.createBufferSource(noiseBuffer);
-    whiteNoise.buffer = noiseBuffer;
     whiteNoise.loop = true;
     
     this.rainGain = this.ctx.createGain();
@@ -83,10 +101,6 @@ export class WeatherAcoustics {
   
   update(windSpeed, moisture, rainVal) {
     if (!this.isInitialized) return;
-    
-    if (this.ctx.state === 'suspended') {
-      this.ctx.resume();
-    }
     
     const normWind = Math.min(1.0, windSpeed / 60.0);
     this.windGain.gain.setTargetAtTime(normWind * 0.35, this.ctx.currentTime, 0.1);

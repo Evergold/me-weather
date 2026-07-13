@@ -229,11 +229,15 @@ export class WeatherTerrain {
     const data = new Float32Array(this.terrainWidth * this.terrainHeight * 4);
     
     for (let i = 0; i < physics.size; i++) {
-      const idx = i * 4;
-      data[idx] = (physics.temperature[i] + 20.0) / 70.0;
-      data[idx + 1] = physics.moisture[i];
-      data[idx + 2] = physics.rain[i];
-      data[idx + 3] = physics.snow[i];
+      const row = Math.floor(i / this.terrainWidth);
+      const col = i % this.terrainWidth;
+      // Perform manual vertical flip on JS side to avoid deprecated WebGL driver y-flips on raw buffer uploads
+      const targetIdx = ((this.terrainHeight - 1 - row) * this.terrainWidth + col) * 4;
+      
+      data[targetIdx] = (physics.temperature[i] + 20.0) / 70.0;
+      data[targetIdx + 1] = physics.moisture[i];
+      data[targetIdx + 2] = physics.rain[i];
+      data[targetIdx + 3] = physics.snow[i];
     }
     
     if (this.weatherTex) {
@@ -247,7 +251,7 @@ export class WeatherTerrain {
       BABYLON.Engine.TEXTUREFORMAT_RGBA,
       this.scene,
       false,
-      true, // invertY to match standard ground UV mapping
+      false, // Set to false to avoid WebGL y-flip deprecation warnings
       BABYLON.Texture.NEAREST_SAMPLINGMODE,
       BABYLON.Engine.TEXTURETYPE_FLOAT
     );
