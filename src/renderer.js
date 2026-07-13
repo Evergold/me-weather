@@ -81,9 +81,9 @@ export class WeatherRenderer {
     this.camera = new BABYLON.ArcRotateCamera(
       "MainCamera",
       -Math.PI / 2,
-      Math.PI / 3.2,
+      Math.PI / 3.6,
       2000,
-      new BABYLON.Vector3(0, 0, 0),
+      new BABYLON.Vector3(0, 0, -200),
       this.scene
     );
     this.camera.lowerBetaLimit = 0.01;
@@ -380,9 +380,9 @@ export class WeatherRenderer {
       this.camera.lowerBetaLimit = 0.01;
       this.camera.upperBetaLimit = Math.PI / 2.1;
       
-      this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
+      this.camera.setTarget(new BABYLON.Vector3(0, 0, -200));
       this.camera.alpha = -Math.PI / 2;
-      this.camera.beta = Math.PI / 3.2;
+      this.camera.beta = Math.PI / 3.6;
       this.camera.radius = 2000;
       
       this.camera.update();
@@ -404,9 +404,9 @@ export class WeatherRenderer {
     this.camera.inertialBetaOffset = 0;
     this.camera.inertialRadiusOffset = 0;
     
-    this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
+    this.camera.setTarget(new BABYLON.Vector3(0, 0, -200));
     this.camera.alpha = -Math.PI / 2;
-    this.camera.beta = Math.PI / 3.2;
+    this.camera.beta = Math.PI / 3.6;
     this.camera.radius = 2000;
     
     this.camera.update();
