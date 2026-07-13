@@ -344,19 +344,26 @@ export class WeatherTerrain {
 
     // Only perform the transition swap when all target zoom meshes are fully loaded.
     if (allTargetTilesLoaded) {
-      // 1. Enable new target tiles immediately so they begin compiling their shaders
+      // 1. Enable new target tiles immediately and gather compilation promises
+      const compilationPromises = [];
       for (const key of visibleKeys) {
         const tile = this.activeTiles.get(key);
         if (tile && tile.mesh) {
           tile.mesh.setEnabled(true);
+          if (tile.material) {
+            compilationPromises.push(tile.material.forceCompilationAsync(tile.mesh));
+          }
           if (tile.spsMesh) {
             tile.spsMesh.setEnabled(true);
+            if (tile.spsMesh.material) {
+              compilationPromises.push(tile.spsMesh.material.forceCompilationAsync(tile.spsMesh));
+            }
           }
         }
       }
       
       // 2. Wait for shaders to be fully compiled asynchronously before swapping
-      this.scene.whenReadyAsync().then(() => {
+      Promise.all(compilationPromises).then(() => {
         const keysToDelete = [];
         for (const [key, tile] of this.activeTiles.entries()) {
           const parts = key.split("_");
