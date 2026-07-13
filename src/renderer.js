@@ -78,15 +78,16 @@ export class WeatherRenderer {
     this.scene.fogColor = new BABYLON.Color3(0.06, 0.07, 0.08);
     this.scene.fogDensity = 0.0015;
     
-    // 3. Setup ArcRotateCamera
     this.camera = new BABYLON.ArcRotateCamera(
       "MainCamera",
       -Math.PI / 2,
-      Math.PI / 3.6,
-      1200,
-      new BABYLON.Vector3(0, 150, 0),
+      Math.PI / 3, // temporary default, overridden by position/target
+      1000,
+      new BABYLON.Vector3(0, 0, 0),
       this.scene
     );
+    this.camera.position.set(0, 800, -1000);
+    this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
     this.camera.lowerBetaLimit = 0.01;
     this.camera.upperBetaLimit = Math.PI / 2.1; // Prevent going below ground
     this.camera.lowerRadiusLimit = 20;
@@ -358,7 +359,7 @@ export class WeatherRenderer {
       this.camera.alpha = -Math.PI / 2;
       this.camera.beta = 0.001; // directly overhead
       this.camera.radius = fitRadius;
-      this.camera.setTarget(new BABYLON.Vector3(0, 150, 0));
+      this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
       
       // Lock rotation limits to prevent user from dragging to rotate in 2D view
       this.camera.lowerAlphaLimit = -Math.PI / 2;
@@ -372,10 +373,8 @@ export class WeatherRenderer {
       this.camera.lowerBetaLimit = 0.01;
       this.camera.upperBetaLimit = Math.PI / 2.1;
       
-      this.camera.alpha = -Math.PI / 2;
-      this.camera.beta = Math.PI / 3.6;
-      this.camera.radius = 1200;
-      this.camera.setTarget(new BABYLON.Vector3(0, 150, 0));
+      this.camera.position.set(0, 800, -1000);
+      this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
     }
   }
   
