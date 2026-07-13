@@ -47,13 +47,32 @@ class WeatherPhysics:
 
     def init_gpu(self):
         try:
+            # 1. Enforce GPU_VRAM_GB check (Feature requirement from migration plan)
+            vram_hint_gb = float(os.getenv("GPU_VRAM_GB", "8"))
+            vram_limit_bytes = int(vram_hint_gb * 1024 * 1024 * 1024)
+            required_bytes = self.size * 33
+            max_allowable_memory = int(vram_limit_bytes * 0.90)
+            
+            if required_bytes > max_allowable_memory:
+                print(f"[Physics] WARNING: Requested WebGPU buffers ({required_bytes / (1024*1024):.1f} MB) exceed 90% of the GPU_VRAM_GB limit ({max_allowable_memory / (1024*1024):.1f} MB).")
+                print("[Physics] Automatically falling back to CPU NumPy mode to prevent OutOfMemory crashes.")
+                self.use_gpu = False
+                return
+
             # Request WebGPU adapter and device
             adapter = wgpu.gpu.request_adapter_sync(power_preference="high-performance")
             if adapter is None:
                 print("[Physics] No suitable GPU adapter found. Falling back to CPU.")
                 self.use_gpu = False
                 return
-            self.device = adapter.request_device_sync()
+
+            # Configure required limits based on allocation sizes
+            required_limits = {}
+            if required_bytes > 256 * 1024 * 1024:
+                required_limits["max_buffer_size"] = min(2048 * 1024 * 1024, required_bytes)
+                required_limits["max_storage_buffer_binding_size"] = min(2048 * 1024 * 1024, required_bytes)
+
+            self.device = adapter.request_device_sync(required_limits=required_limits)
             print("[Physics] WebGPU Initialized successfully.")
             self.setup_gpu_buffers()
         except Exception as e:
