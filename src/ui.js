@@ -111,6 +111,10 @@ export class WeatherUI {
         this.landingScreen.classList.remove('active');
         this.dashboardScreen.classList.add('active');
         
+        // Force browser style flush and layout reflow so the canvas gets its active dimensions immediately
+        const reflowW = this.canvas.clientWidth;
+        const reflowH = this.canvas.clientHeight;
+        
         // Force resize immediately to compute correct layout dimensions of the canvas
         if (this.renderer && this.renderer.engine) {
           this.renderer.engine.resize();
@@ -152,6 +156,8 @@ export class WeatherUI {
     this.dropZone.addEventListener('click', () => {
       this.landingScreen.classList.remove('active');
       this.dashboardScreen.classList.add('active');
+      
+      const reflowW = this.canvas.clientWidth;
       if (this.renderer && this.renderer.engine) {
         this.renderer.engine.resize();
       }
@@ -165,6 +171,8 @@ export class WeatherUI {
       // Direct load
       this.landingScreen.classList.remove('active');
       this.dashboardScreen.classList.add('active');
+      
+      const reflowW = this.canvas.clientWidth;
       if (this.renderer && this.renderer.engine) {
         this.renderer.engine.resize();
       }
@@ -188,6 +196,8 @@ export class WeatherUI {
       this.dropZone.classList.remove('dragover');
       this.landingScreen.classList.remove('active');
       this.dashboardScreen.classList.add('active');
+      
+      const reflowW = this.canvas.clientWidth;
       if (this.renderer && this.renderer.engine) {
         this.renderer.engine.resize();
       }

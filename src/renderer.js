@@ -84,7 +84,7 @@ export class WeatherRenderer {
       -Math.PI / 2,
       Math.PI / 3,
       1200,
-      new BABYLON.Vector3(0, 0, 0),
+      new BABYLON.Vector3(0, 100, 0),
       this.scene
     );
     this.camera.attachControl(this.canvas, true);
@@ -356,7 +356,7 @@ export class WeatherRenderer {
       this.camera.alpha = -Math.PI / 2;
       this.camera.beta = 0.001; // directly overhead
       this.camera.radius = fitRadius;
-      this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
+      this.camera.setTarget(new BABYLON.Vector3(0, 100, 0));
       
       // Lock rotation limits to prevent user from dragging to rotate in 2D view
       this.camera.lowerAlphaLimit = -Math.PI / 2;
@@ -373,7 +373,7 @@ export class WeatherRenderer {
       this.camera.alpha = -Math.PI / 2;
       this.camera.beta = Math.PI / 3;
       this.camera.radius = 1200;
-      this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
+      this.camera.setTarget(new BABYLON.Vector3(0, 100, 0));
     }
   }
   
