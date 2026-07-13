@@ -100,33 +100,37 @@ export class WeatherPhysics {
   }
 
   unpackBinaryFrame(buffer) {
-    const typeHeader = new Uint8Array(buffer, 0, 1)[0];
-    const payload = buffer.slice(1);
-    const gridSize = this.size;
+    try {
+      const typeHeader = new Uint8Array(buffer, 0, 1)[0];
+      const payload = buffer.slice(1);
+      const gridSize = this.size;
 
-    // Ordered byte offset blocks:
-    // temp (uint16 * gridSize): 0 to gridSize * 2
-    // moist (uint8 * gridSize): gridSize * 2 to gridSize * 3
-    // windX (uint16 * gridSize): gridSize * 3 to gridSize * 5
-    // windY (uint16 * gridSize): gridSize * 5 to gridSize * 7
-    // rain (uint8 * gridSize): gridSize * 7 to gridSize * 8
-    // snow (uint8 * gridSize): gridSize * 8 to gridSize * 9
+      // Ordered byte offset blocks:
+      // temp (uint16 * gridSize): 0 to gridSize * 2
+      // moist (uint8 * gridSize): gridSize * 2 to gridSize * 3
+      // windX (uint16 * gridSize): gridSize * 3 to gridSize * 5
+      // windY (uint16 * gridSize): gridSize * 5 to gridSize * 7
+      // rain (uint8 * gridSize): gridSize * 7 to gridSize * 8
+      // snow (uint8 * gridSize): gridSize * 8 to gridSize * 9
 
-    const tempView = new Uint16Array(payload, 0, gridSize);
-    const moistView = new Uint8Array(payload, gridSize * 2, gridSize);
-    const windXView = new Uint16Array(payload, gridSize * 3, gridSize);
-    const windYView = new Uint16Array(payload, gridSize * 5, gridSize);
-    const rainView = new Uint8Array(payload, gridSize * 7, gridSize);
-    const snowView = new Uint8Array(payload, gridSize * 8, gridSize);
+      const tempView = new Uint16Array(payload, 0, gridSize);
+      const moistView = new Uint8Array(payload, gridSize * 2, gridSize);
+      const windXView = new Uint16Array(payload, gridSize * 3, gridSize);
+      const windYView = new Uint16Array(payload, gridSize * 5, gridSize);
+      const rainView = new Uint8Array(payload, gridSize * 7, gridSize);
+      const snowView = new Uint8Array(payload, gridSize * 8, gridSize);
 
-    // Decode normalized values back to physics floats
-    for (let i = 0; i < gridSize; i++) {
-      this.temperature[i] = (tempView[i] / 65535.0) * 70.0 - 20.0;
-      this.moisture[i] = moistView[i] / 255.0;
-      this.windX[i] = (windXView[i] / 65535.0) * 120.0 - 60.0;
-      this.windY[i] = (windYView[i] / 65535.0) * 120.0 - 60.0;
-      this.rain[i] = rainView[i] / 255.0;
-      this.snow[i] = snowView[i] / 255.0;
+      // Decode normalized values back to physics floats
+      for (let i = 0; i < gridSize; i++) {
+        this.temperature[i] = (tempView[i] / 65535.0) * 70.0 - 20.0;
+        this.moisture[i] = moistView[i] / 255.0;
+        this.windX[i] = (windXView[i] / 65535.0) * 120.0 - 60.0;
+        this.windY[i] = (windYView[i] / 65535.0) * 120.0 - 60.0;
+        this.rain[i] = rainView[i] / 255.0;
+        this.snow[i] = snowView[i] / 255.0;
+      }
+    } catch (e) {
+      console.error("[Client Physics] Error unpacking binary frame:", e);
     }
   }
 
