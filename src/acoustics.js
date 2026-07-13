@@ -9,6 +9,20 @@ export class WeatherAcoustics {
     this.windGain = null;
     this.rainGain = null;
     this.isInitialized = false;
+
+    // Set up one-time user interaction listener to initialize AudioContext cleanly in response to a gesture
+    const startAcoustics = () => {
+      this.init();
+      // Clean up listeners
+      window.removeEventListener('click', startAcoustics);
+      window.removeEventListener('mousedown', startAcoustics);
+      window.removeEventListener('keydown', startAcoustics);
+      window.removeEventListener('touchstart', startAcoustics);
+    };
+    window.addEventListener('click', startAcoustics);
+    window.addEventListener('mousedown', startAcoustics);
+    window.addEventListener('keydown', startAcoustics);
+    window.addEventListener('touchstart', startAcoustics);
   }
   
   init() {
@@ -28,25 +42,7 @@ export class WeatherAcoustics {
       this.initRainGenerator();
       
       this.isInitialized = true;
-      console.log("[Client Acoustics] Audio Context and generators initialized.");
-
-      // Setup one-time user interaction listener to resume AudioContext cleanly without console warnings
-      const resumeAudio = () => {
-        if (this.ctx && this.ctx.state === 'suspended') {
-          this.ctx.resume().then(() => {
-            console.log("[Client Acoustics] AudioContext resumed successfully by user interaction.");
-          });
-        }
-        // Clean up listeners
-        window.removeEventListener('click', resumeAudio);
-        window.removeEventListener('mousedown', resumeAudio);
-        window.removeEventListener('keydown', resumeAudio);
-        window.removeEventListener('touchstart', resumeAudio);
-      };
-      window.addEventListener('click', resumeAudio);
-      window.addEventListener('mousedown', resumeAudio);
-      window.addEventListener('keydown', resumeAudio);
-      window.addEventListener('touchstart', resumeAudio);
+      console.log("[Client Acoustics] Audio Context and generators initialized cleanly by user interaction.");
     } catch (e) {
       console.warn("[Client Acoustics] Audio initialization failed:", e);
     }
