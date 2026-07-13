@@ -163,6 +163,9 @@ export class WeatherRenderer {
     }
     
     this.tickCount++;
+    if (this.camera && this.tickCount <= 20) {
+      console.log(`[Client Renderer] draw tick: ${this.tickCount} pos: ${this.camera.position.toString()} target: ${this.camera.target.toString()} radius: ${this.camera.radius}`);
+    }
     
     // Explicitly resize on the first few frames to match actual layout size
     if (this.tickCount <= 5) {
