@@ -428,22 +428,21 @@ export class WeatherRenderer {
         pointers.panningMouseButton = 2; // Default to Right-click panning
       }
       
-      // Dynamically toggle panning mouse button on pointerdown to allow Ctrl + Left-click panning
-      // without breaking standard Left-click rotation.
-      if (!this._pointerObserver) {
-        this._pointerObserver = this.scene.onPointerObservable.add((pointerInfo) => {
-          const event = pointerInfo.event;
-          if (pointerInfo.type === BABYLON.PointerEventTypes.POINTERDOWN) {
-            const activePointers = this.camera.inputs && this.camera.inputs.attached && (this.camera.inputs.attached.pointers || this.camera.inputs.attached.mouse);
-            if (activePointers) {
-              if (event.ctrlKey) {
-                activePointers.panningMouseButton = 0; // Left-click pans when Ctrl is held
-              } else {
-                activePointers.panningMouseButton = 2; // Right-click pans, Left-click rotates
-              }
+      // Dynamically toggle panning mouse button on pointerdown during the DOM Capture phase.
+      // This guarantees our handler runs before BabylonJS event listeners (bubble phase),
+      // ensuring panningMouseButton is updated before BabylonJS reads it for the current drag.
+      if (!this._pointerListener) {
+        this._pointerListener = (event) => {
+          const activePointers = this.camera.inputs && this.camera.inputs.attached && (this.camera.inputs.attached.pointers || this.camera.inputs.attached.mouse);
+          if (activePointers) {
+            if (event.ctrlKey) {
+              activePointers.panningMouseButton = 0; // Left-click pans when Ctrl is held
+            } else {
+              activePointers.panningMouseButton = 2; // Right-click pans, Left-click rotates
             }
           }
-        });
+        };
+        this.canvas.addEventListener('pointerdown', this._pointerListener, true); // useCapture = true
       }
       
       console.log(`[Client Renderer] attachCameraControls: Target after attach: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
