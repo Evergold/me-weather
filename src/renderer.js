@@ -87,7 +87,6 @@ export class WeatherRenderer {
       new BABYLON.Vector3(0, 100, 0),
       this.scene
     );
-    this.camera.attachControl(this.canvas, true);
     this.camera.lowerBetaLimit = 0.01;
     this.camera.upperBetaLimit = Math.PI / 2.1; // Prevent going below ground
     this.camera.lowerRadiusLimit = 20;
@@ -379,5 +378,11 @@ export class WeatherRenderer {
   
   cacheTerrain(image) {
     // Stub
+  }
+
+  attachCameraControls() {
+    if (this.camera && this.canvas) {
+      this.camera.attachControl(this.canvas, true);
+    }
   }
 }
