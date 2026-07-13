@@ -327,9 +327,24 @@ export class WeatherTerrain {
       }
     }
     
+    // Check if we actually need a transition swap (zoom level changed or old tiles exist)
+    let needsSwap = this.currentZoom !== z;
+    if (!needsSwap) {
+      for (const key of this.activeTiles.keys()) {
+        const parts = key.split("_");
+        const tileZ = parseInt(parts[0]);
+        if (tileZ !== z || !visibleKeys.has(key)) {
+          needsSwap = true;
+          break;
+        }
+      }
+    }
+    
+    if (!needsSwap) return;
+
     // Only perform the transition swap when all target zoom meshes are fully loaded.
     if (allTargetTilesLoaded) {
-      // 1. Enable new target tiles
+      // 1. Enable new target tiles immediately so they begin compiling their shaders
       for (const key of visibleKeys) {
         const tile = this.activeTiles.get(key);
         if (tile && tile.mesh) {
@@ -340,34 +355,36 @@ export class WeatherTerrain {
         }
       }
       
-      // 2. Safely dispose of old tiles from other zoom levels or out-of-bounds areas
-      const keysToDelete = [];
-      for (const [key, tile] of this.activeTiles.entries()) {
-        const parts = key.split("_");
-        const tileZ = parseInt(parts[0]);
-        
-        if (tileZ !== z || !visibleKeys.has(key)) {
-          if (tile.mesh) tile.mesh.dispose();
-          if (tile.material) tile.material.dispose();
-          if (tile.heightTex) tile.heightTex.dispose();
-          if (tile.normalTex) tile.normalTex.dispose();
-          if (tile.flowTex) tile.flowTex.dispose();
-          if (tile.sps) tile.sps.dispose();
-          if (tile.spsMesh) {
-            if (this.scene.metadata && this.scene.metadata.shadowGenerator) {
-              this.scene.metadata.shadowGenerator.removeShadowCaster(tile.spsMesh);
+      // 2. Wait for shaders to be fully compiled asynchronously before swapping
+      this.scene.whenReadyAsync().then(() => {
+        const keysToDelete = [];
+        for (const [key, tile] of this.activeTiles.entries()) {
+          const parts = key.split("_");
+          const tileZ = parseInt(parts[0]);
+          
+          if (tileZ !== z || !visibleKeys.has(key)) {
+            if (tile.mesh) tile.mesh.dispose();
+            if (tile.material) tile.material.dispose();
+            if (tile.heightTex) tile.heightTex.dispose();
+            if (tile.normalTex) tile.normalTex.dispose();
+            if (tile.flowTex) tile.flowTex.dispose();
+            if (tile.sps) tile.sps.dispose();
+            if (tile.spsMesh) {
+              if (this.scene.metadata && this.scene.metadata.shadowGenerator) {
+                this.scene.metadata.shadowGenerator.removeShadowCaster(tile.spsMesh);
+              }
+              tile.spsMesh.dispose();
             }
-            tile.spsMesh.dispose();
+            keysToDelete.push(key);
           }
-          keysToDelete.push(key);
         }
-      }
-      for (const key of keysToDelete) {
-        this.activeTiles.delete(key);
-      }
-      
-      this.currentZoom = z;
-      this.initialTilesLoaded = true;
+        for (const key of keysToDelete) {
+          this.activeTiles.delete(key);
+        }
+        
+        this.currentZoom = z;
+        this.initialTilesLoaded = true;
+      });
     }
   }
   

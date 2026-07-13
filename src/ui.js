@@ -17,7 +17,7 @@ export class WeatherUI {
     this.landmarkManager = new LandmarkManager();
 
     // Simulation settings to bind
-    this.simSpeed = 1; // Speed multiplier (0 = paused)
+    this.simSpeed = 0; // Speed multiplier (0 = paused)
     this.timeOfDay = 480; // minutes past midnight (8:00 AM)
     this.season = 'summer';
     this.globalWindSpeed = 15;
@@ -110,14 +110,21 @@ export class WeatherUI {
         
         this.landingScreen.classList.remove('active');
         this.dashboardScreen.classList.add('active');
+        
+        // Force resize immediately to compute correct layout dimensions of the canvas
+        if (this.renderer && this.renderer.engine) {
+          this.renderer.engine.resize();
+        }
+        window.dispatchEvent(new Event('resize'));
+        
         this.simSpeed = 1;
         this.physics.sendSettings({ simSpeed: 1 });
         this.startSimulationLoop();
         
-        // Force resize to compute correct layout dimensions
+        // Safety backup resize shortly after transition begins
         setTimeout(() => {
           window.dispatchEvent(new Event('resize'));
-        }, 50);
+        }, 100);
       }
     }, 100);
   }
@@ -145,6 +152,10 @@ export class WeatherUI {
     this.dropZone.addEventListener('click', () => {
       this.landingScreen.classList.remove('active');
       this.dashboardScreen.classList.add('active');
+      if (this.renderer && this.renderer.engine) {
+        this.renderer.engine.resize();
+      }
+      window.dispatchEvent(new Event('resize'));
       this.simSpeed = 1;
       this.physics.sendSettings({ simSpeed: 1 });
       this.startSimulationLoop();
@@ -154,6 +165,10 @@ export class WeatherUI {
       // Direct load
       this.landingScreen.classList.remove('active');
       this.dashboardScreen.classList.add('active');
+      if (this.renderer && this.renderer.engine) {
+        this.renderer.engine.resize();
+      }
+      window.dispatchEvent(new Event('resize'));
       this.simSpeed = 1;
       this.physics.sendSettings({ simSpeed: 1 });
       this.startSimulationLoop();
@@ -173,6 +188,10 @@ export class WeatherUI {
       this.dropZone.classList.remove('dragover');
       this.landingScreen.classList.remove('active');
       this.dashboardScreen.classList.add('active');
+      if (this.renderer && this.renderer.engine) {
+        this.renderer.engine.resize();
+      }
+      window.dispatchEvent(new Event('resize'));
       this.simSpeed = 1;
       this.physics.sendSettings({ simSpeed: 1 });
       this.startSimulationLoop();
