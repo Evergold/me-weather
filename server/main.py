@@ -6,6 +6,7 @@ import sys
 import asyncio
 import math
 import subprocess
+import json
 import numpy as np
 from PIL import Image
 from contextlib import asynccontextmanager
@@ -52,6 +53,7 @@ DECOUPLE_HYDROLOGY = os.getenv("DECOUPLE_HYDROLOGY", "False").lower() == "true"
 
 HEIGHTMAP_FILENAME = os.getenv("HEIGHTMAP_FILENAME", "heightmap.png")
 NORMALMAP_FILENAME = os.getenv("NORMALMAP_FILENAME", "normalmap.png")
+TILED_IMPORT_DIR_NAME = os.getenv("TILED_IMPORT_DIR", "")
 
 # Paths
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
@@ -61,24 +63,47 @@ NORMALMAP_PATH = os.path.join(ASSETS_DIR, NORMALMAP_FILENAME)
 COARSE_HEIGHTMAP_PATH = os.path.join(ASSETS_DIR, "heightmap_coarse.png")
 COARSE_NORMALMAP_PATH = os.path.join(ASSETS_DIR, "normalmap_coarse.jpg")
 
+IS_TILED_MODE = False
+tiled_manifest = None
+tiled_source_dir = ""
+
+if TILED_IMPORT_DIR_NAME:
+    tiled_source_dir = os.path.join(ASSETS_DIR, TILED_IMPORT_DIR_NAME)
+    manifest_path = os.path.join(tiled_source_dir, "manifest.json")
+    if os.path.exists(manifest_path):
+        try:
+            with open(manifest_path, "r") as f:
+                tiled_manifest = json.load(f)
+            IS_TILED_MODE = True
+            print(f"[Tiled Import] Active. Loaded manifest: {tiled_manifest['name']} ({tiled_manifest['totalResolution']}x{tiled_manifest['totalResolution']})")
+        except Exception as e:
+            print(f"[Tiled Import] Failed to load manifest: {e}")
+
 # Enforce that terrain files exist in assets folder before proceeding
-if not os.path.exists(HEIGHTMAP_PATH) or not os.path.exists(NORMALMAP_PATH):
-    print("\n" + "="*80)
-    print(" CRITICAL STARTUP ERROR: Missing Master Terrain Map Assets!")
-    print(f" Heightmap expected at: {HEIGHTMAP_PATH}")
-    print(f" Normalmap expected at: {NORMALMAP_PATH}")
-    print(" Please place your terrain assets in the server assets folder and try again.")
-    print("="*80 + "\n")
-    sys.exit(1)
+if not IS_TILED_MODE:
+    if not os.path.exists(HEIGHTMAP_PATH) or not os.path.exists(NORMALMAP_PATH):
+        print("\n" + "="*80)
+        print(" CRITICAL STARTUP ERROR: Missing Master Terrain Map Assets!")
+        print(f" Heightmap expected at: {HEIGHTMAP_PATH}")
+        print(f" Normalmap expected at: {NORMALMAP_PATH}")
+        print(" Please place your terrain assets in the server assets folder and try again.")
+        print("="*80 + "\n")
+        sys.exit(1)
 
 # Dynamically read simulation grid dimensions from master heightmap size
-try:
-    with Image.open(HEIGHTMAP_PATH) as img:
-        SIM_WIDTH, SIM_HEIGHT = img.size
-    print(f"[Assets] Master heightmap detected dynamically: {SIM_WIDTH}x{SIM_HEIGHT}")
-except Exception as e:
-    print(f"[Error] Failed to read heightmap dimensions: {e}")
-    sys.exit(1)
+SIM_WIDTH, SIM_HEIGHT = 1024, 1024
+if IS_TILED_MODE:
+    SIM_WIDTH = tiled_manifest["totalResolution"]
+    SIM_HEIGHT = tiled_manifest["totalResolution"]
+    print(f"[Assets] Tiled Map dimensions detected dynamically from manifest: {SIM_WIDTH}x{SIM_HEIGHT}")
+else:
+    try:
+        with Image.open(HEIGHTMAP_PATH) as img:
+            SIM_WIDTH, SIM_HEIGHT = img.size
+        print(f"[Assets] Master heightmap detected dynamically: {SIM_WIDTH}x{SIM_HEIGHT}")
+    except Exception as e:
+        print(f"[Error] Failed to read heightmap dimensions: {e}")
+        sys.exit(1)
 
 # Configure simulation dimensions based on WebGPU availability
 from physics_solver import HAS_WGPU
@@ -86,7 +111,8 @@ if not HAS_WGPU:
     print("[Physics] WebGPU not available. Downsampling simulation grid to 256x256 for real-time CPU ticking.")
     sim_w_solver, sim_h_solver = 256, 256
 else:
-    sim_w_solver, sim_h_solver = SIM_WIDTH, SIM_HEIGHT
+    sim_w_solver = min(1024, SIM_WIDTH)
+    sim_h_solver = min(1024, SIM_HEIGHT)
 
 # Global simulation state
 physics = WeatherPhysics(width=sim_w_solver, height=sim_h_solver, use_gpu=True)
@@ -110,18 +136,66 @@ is_running = True
 os.makedirs(ASSETS_DIR, exist_ok=True)
 os.makedirs(TILES_DIR, exist_ok=True)
 
+def get_chunk_from_tiled_source(left, top, right, bottom, source_dir, manifest, map_type):
+    tile_size = manifest["tileSize"]
+    grid_size = manifest["gridSize"]
+    naming_pattern = manifest["tileNamingPattern"]
+    file_format = manifest.get("fileFormat", "png")
+    
+    start_tile_x = int(left // tile_size)
+    start_tile_y = int(top // tile_size)
+    end_tile_x = int((right - 1) // tile_size)
+    end_tile_y = int((bottom - 1) // tile_size)
+    
+    chunk_w = right - left
+    chunk_h = bottom - top
+    canvas = Image.new("RGBA" if file_format.lower() in ["png", "exr", "tif", "tiff"] else "RGB", (chunk_w, chunk_h))
+    
+    for tx in range(start_tile_x, end_tile_x + 1):
+        for ty in range(start_tile_y, end_tile_y + 1):
+            if tx < 0 or tx >= grid_size or ty < 0 or ty >= grid_size:
+                continue
+            
+            tile_name = naming_pattern.replace("{x}", str(tx)).replace("{y}", str(ty))
+            tile_path = os.path.join(source_dir, map_type, tile_name)
+            
+            if not os.path.exists(tile_path):
+                print(f"[Tiled Import] Missing source tile: {tile_path}")
+                continue
+                
+            with Image.open(tile_path) as tile_img:
+                inter_left = max(left, tx * tile_size)
+                inter_top = max(top, ty * tile_size)
+                inter_right = min(right, (tx + 1) * tile_size)
+                inter_bottom = min(bottom, (ty + 1) * tile_size)
+                
+                rel_left = inter_left - tx * tile_size
+                rel_top = inter_top - ty * tile_size
+                rel_right = inter_right - tx * tile_size
+                rel_bottom = inter_bottom - ty * tile_size
+                
+                cropped = tile_img.crop((rel_left, rel_top, rel_right, rel_bottom))
+                
+                paste_x = inter_left - left
+                paste_y = inter_top - top
+                canvas.paste(cropped, (paste_x, paste_y))
+                
+    return canvas
+
 # Pre-slicing terrain tiles on startup
 def pre_slice_map(img_path, map_type="height"):
     """Pre-slices the master image dynamically based on dimensions (level 0 up to 5 or 6)."""
-    if not os.path.exists(img_path):
-        print(f"[Tile Server] {map_type} map not found at {img_path}. Skipping pre-slicing.")
-        return
-
-    img = Image.open(img_path)
-    w, h = img.size
+    if not IS_TILED_MODE:
+        if not os.path.exists(img_path):
+            print(f"[Tile Server] {map_type} map not found at {img_path}. Skipping pre-slicing.")
+            return
+        img = Image.open(img_path)
+        w, h = img.size
+    else:
+        w = SIM_WIDTH
+        h = SIM_HEIGHT
 
     # Calculate max zoom dynamically: 256px tile size.
-    # Low-res maps have max zoom Z=5. High-res (16k+) maps have Z=6 or higher.
     max_zoom = int(math.log2(w // 256))
     max_zoom = max(0, min(7, max_zoom)) # clamp Z to sensible bounds [0, 7]
 
@@ -148,27 +222,54 @@ def pre_slice_map(img_path, map_type="height"):
                 right = left + chunk_w
                 bottom = top + chunk_h
                 
-                crop_box = (left, top, right, bottom)
-                tile_img = img.crop(crop_box).resize((256, 256), Image.Resampling.BILINEAR)
+                if IS_TILED_MODE:
+                    tile_img = get_chunk_from_tiled_source(left, top, right, bottom, tiled_source_dir, tiled_manifest, map_type)
+                    if map_type == "height":
+                        if tile_img.mode in ["F", "I;16", "I"]:
+                            tile_img = tile_img.convert("F").point(lambda x: x / 256.0).convert("L").convert("RGBA")
+                        else:
+                            tile_img = tile_img.convert("RGBA")
+                    else:
+                        tile_img = tile_img.convert("RGB")
+                    tile_img = tile_img.resize((256, 256), Image.Resampling.BILINEAR)
+                else:
+                    crop_box = (left, top, right, bottom)
+                    tile_img = img.crop(crop_box).resize((256, 256), Image.Resampling.BILINEAR)
+                
                 tile_img.save(tile_filename)
 
     print(f"[Tile Server] Pre-slicing completed for {map_type} map.")
 
-
-
 # Generate coarse versions (1024x1024) on startup to ensure correct format and depth
 print("[Assets] Generating coarse heightmap and normalmap...")
 try:
-    # Open 16-bit heightmap, scale down to 8-bit correctly to avoid Pillow's raw clamping bug, and convert to RGBA
-    h_img_master = Image.open(HEIGHTMAP_PATH)
-    h_img_scaled = h_img_master.convert("F").point(lambda x: x / 256.0).convert("L").convert("RGBA")
-    
-    # 1024px for High-Res 3D Terrain Displacement
-    h_img_1024 = h_img_scaled.resize((1024, 1024), Image.Resampling.BILINEAR)
-    h_img_1024.save(COARSE_HEIGHTMAP_PATH)
-    
-    n_img_1024 = Image.open(NORMALMAP_PATH).convert("RGB").resize((1024, 1024), Image.Resampling.BILINEAR)
-    n_img_1024.save(COARSE_NORMALMAP_PATH, "JPEG", quality=90)
+    if IS_TILED_MODE:
+        if not os.path.exists(COARSE_HEIGHTMAP_PATH):
+            print("[Tiled Import] Generating heightmap_coarse.png from tiled source...")
+            h_img_master = get_chunk_from_tiled_source(0, 0, SIM_WIDTH, SIM_HEIGHT, tiled_source_dir, tiled_manifest, "height")
+            if h_img_master.mode in ["F", "I;16", "I"]:
+                h_img_scaled = h_img_master.convert("F").point(lambda x: x / 256.0).convert("L").convert("RGBA")
+            else:
+                h_img_scaled = h_img_master.convert("RGBA")
+            h_img_1024 = h_img_scaled.resize((1024, 1024), Image.Resampling.BILINEAR)
+            h_img_1024.save(COARSE_HEIGHTMAP_PATH)
+            
+        if not os.path.exists(COARSE_NORMALMAP_PATH):
+            print("[Tiled Import] Generating normalmap_coarse.jpg from tiled source...")
+            n_img_master = get_chunk_from_tiled_source(0, 0, SIM_WIDTH, SIM_HEIGHT, tiled_source_dir, tiled_manifest, "normal")
+            n_img_1024 = n_img_master.convert("RGB").resize((1024, 1024), Image.Resampling.BILINEAR)
+            n_img_1024.save(COARSE_NORMALMAP_PATH, "JPEG", quality=90)
+    else:
+        # Open 16-bit heightmap, scale down to 8-bit correctly to avoid Pillow's raw clamping bug, and convert to RGBA
+        h_img_master = Image.open(HEIGHTMAP_PATH)
+        h_img_scaled = h_img_master.convert("F").point(lambda x: x / 256.0).convert("L").convert("RGBA")
+        
+        # 1024px for High-Res 3D Terrain Displacement
+        h_img_1024 = h_img_scaled.resize((1024, 1024), Image.Resampling.BILINEAR)
+        h_img_1024.save(COARSE_HEIGHTMAP_PATH)
+        
+        n_img_1024 = Image.open(NORMALMAP_PATH).convert("RGB").resize((1024, 1024), Image.Resampling.BILINEAR)
+        n_img_1024.save(COARSE_NORMALMAP_PATH, "JPEG", quality=90)
 except Exception as e:
     print(f"[Error] Failed to generate coarse maps: {e}")
     sys.exit(1)
@@ -177,7 +278,10 @@ pre_slice_map(HEIGHTMAP_PATH, "height")
 pre_slice_map(NORMALMAP_PATH, "normal")
 
 # Load heightmap into physics solver
-physics.load_heightmap(HEIGHTMAP_PATH)
+if IS_TILED_MODE:
+    physics.load_heightmap(COARSE_HEIGHTMAP_PATH)
+else:
+    physics.load_heightmap(HEIGHTMAP_PATH)
 
 # HTTP routes for serving terrain tiles and assets
 @app.get("/assets/{filename}")

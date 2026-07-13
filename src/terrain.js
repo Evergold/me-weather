@@ -6,24 +6,25 @@ import * as BABYLON from '@babylonjs/core';
 export class WeatherTerrain {
   constructor(scene) {
     this.scene = scene;
-    this.mesh = null;
-    this.material = null;
-    
-    this.heightmapTex = null;
-    this.heightmapTexPrev = null;
-    this.normalmapTex = null;
-    this.weatherTex = null;
+    this.activeTiles = new Map(); // Key: "z_x_y" -> Value: { mesh, material, heightTex, normalTex }
     
     this.terrainWidth = 256;
     this.terrainHeight = 256;
-    this.size = this.terrainWidth * this.terrainHeight;
     
-    // Geomorphing state
-    this.morphProgress = 1.0;
+    // Cache for material uniform values to apply to newly created tiles
+    this.uniforms = {
+      uScale: 250.0,
+      uMorphProgress: 1.0,
+      activeLayer: 0,
+      timeOfDay: 480.0,
+      uLightDir: new BABYLON.Vector3(-0.5, -0.8, -0.5),
+      uLightColor: new BABYLON.Color3(1.0, 1.0, 1.0)
+    };
+    
+    this.weatherTex = null;
     
     this.initShaders();
-    this.initMesh();
-    this.initMaterial();
+    this.initWeatherTexture();
   }
   
   initShaders() {
@@ -41,14 +42,20 @@ export class WeatherTerrain {
       uniform sampler2D tNormal;
       uniform float uScale;
       uniform float uMorphProgress;
+      
+      uniform vec2 uTileOffset;
+      uniform float uTileScale;
 
       varying vec2 vUv;
+      varying vec2 vUvGlobal;
       varying vec3 vNormal;
       varying vec3 vPosition;
       varying float vHeight;
 
       void main() {
         vUv = uv;
+        // Calculate global UV coordinates relative to the full terrain grid
+        vUvGlobal = uTileOffset * uTileScale + uv * uTileScale;
         
         // GPU-based Geomorphing (lerps height from prev to target to prevent LOD pops)
         float hTarget = texture2D(tHeight, uv).r;
@@ -79,6 +86,7 @@ export class WeatherTerrain {
       uniform vec3 uLightColor;
 
       varying vec2 vUv;
+      varying vec2 vUvGlobal;
       varying vec3 vNormal;
       varying vec3 vPosition;
       varying float vHeight;
@@ -88,7 +96,8 @@ export class WeatherTerrain {
         vec3 lightDir = normalize(-uLightDir);
         float diffuse = max(0.12, dot(normal, lightDir));
 
-        vec4 wData = texture2D(tWeather, vUv);
+        // Sample weather data using global UV coordinates across the entire Middle-earth grid
+        vec4 wData = texture2D(tWeather, vUvGlobal);
         float temp = wData.r * 70.0 - 20.0;
         float moist = wData.g;
         float rain = wData.b;
@@ -136,40 +145,8 @@ export class WeatherTerrain {
     `;
   }
   
-  initMesh() {
-    this.mesh = BABYLON.MeshBuilder.CreateGround(
-      "terrain",
-      { width: 2000, height: 2000, subdivisions: 255 },
-      this.scene
-    );
-    this.mesh.receiveShadows = true;
-  }
-  
-  initMaterial() {
-    this.material = new BABYLON.ShaderMaterial(
-      "weatherTerrainMaterial",
-      this.scene,
-      {
-        vertex: "weatherTerrain",
-        fragment: "weatherTerrain",
-      },
-      {
-        attributes: ["position", "uv"],
-        uniforms: ["world", "view", "projection", "worldViewProjection", "uScale", "uMorphProgress", "activeLayer", "timeOfDay", "uLightDir", "uLightColor"],
-        samplers: ["tHeight", "tHeightPrev", "tNormal", "tWeather"]
-      }
-    );
-    
-    this.material.setFloat("uScale", 250.0);
-    this.material.setFloat("uMorphProgress", 1.0);
-    this.material.setInt("activeLayer", 0);
-    this.material.setFloat("timeOfDay", 480.0);
-    this.material.setVector3("uLightDir", new BABYLON.Vector3(-0.5, -0.8, -0.5));
-    this.material.setColor3("uLightColor", new BABYLON.Color3(1.0, 1.0, 1.0));
-
-    this.mesh.material = this.material;
-
-    // Initialize an empty weather texture to update in-place later (prevents WebGPU validation/destroyed texture errors)
+  initWeatherTexture() {
+    // Initialize empty global weather texture once
     const defaultData = new Float32Array(this.terrainWidth * this.terrainHeight * 4);
     this.weatherTex = new BABYLON.RawTexture(
       defaultData,
@@ -178,72 +155,194 @@ export class WeatherTerrain {
       BABYLON.Engine.TEXTUREFORMAT_RGBA,
       this.scene,
       false,
-      false, // Set to false to avoid WebGL/WebGPU driver-side y-flip deprecations
+      false, // Set to false to avoid WebGL/WebGPU driver-side y-flip deprecation warnings
       BABYLON.Texture.NEAREST_SAMPLINGMODE,
       BABYLON.Engine.TEXTURETYPE_FLOAT
     );
-    this.material.setTexture("tWeather", this.weatherTex);
   }
   
-  loadCoarseTextures() {
+  updateTiles(camera) {
+    if (!camera) return;
+    
+    // Choose quadtree zoom level based on camera altitude (radius)
+    let z = 0;
+    if (camera.radius > 1500) {
+      z = 0;
+    } else if (camera.radius > 800) {
+      z = 1;
+    } else if (camera.radius > 400) {
+      z = 2;
+    } else {
+      z = 3;
+    }
+    
+    const tilesCount = Math.pow(2, z);
+    const tileSize = 2000.0 / tilesCount;
+    
+    // Determine visibility horizon based on zoom focus area
+    let visibilityRadius = 3000.0; // zoom 0 sees the whole continent
+    if (z === 1) visibilityRadius = 1600.0;
+    if (z === 2) visibilityRadius = 900.0;
+    if (z === 3) visibilityRadius = 500.0;
+    
+    const targetX = camera.target.x;
+    const targetZ = camera.target.z;
+    const visibleKeys = new Set();
     const apiHost = `${window.location.hostname}:8000`;
     const apiProtocol = window.location.protocol;
     
-    this.heightmapTex = new BABYLON.Texture(
-      `${apiProtocol}//${apiHost}/assets/heightmap_coarse.png`,
-      this.scene,
-      true,
-      true, // invertY to match standard ground UV mapping
-      BABYLON.Texture.LINEAR_LINEAR
-    );
-    this.heightmapTex.wrapU = BABYLON.Texture.CLAMP_ADDRESSMODE;
-    this.heightmapTex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
-    this.heightmapTexPrev = this.heightmapTex;
+    // Find all tiles inside the visibility radius
+    for (let x = 0; x < tilesCount; x++) {
+      for (let y = 0; y < tilesCount; y++) {
+        const tileCenterX = -1000.0 + (x + 0.5) * tileSize;
+        const tileCenterZ = -1000.0 + (y + 0.5) * tileSize;
+        
+        const dx = tileCenterX - targetX;
+        const dz = tileCenterZ - targetZ;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        
+        if (dist <= visibilityRadius) {
+          const key = `${z}_${x}_${y}`;
+          visibleKeys.add(key);
+          
+          if (!this.activeTiles.has(key)) {
+            this.createTile(z, x, y, tileSize, apiProtocol, apiHost);
+          }
+        }
+      }
+    }
     
-    this.material.setTexture("tHeight", this.heightmapTex);
-    this.material.setTexture("tHeightPrev", this.heightmapTexPrev);
-    
-    this.normalmapTex = new BABYLON.Texture(
-      `${apiProtocol}//${apiHost}/assets/normalmap_coarse.jpg`,
-      this.scene,
-      true,
-      true, // invertY to match standard ground UV mapping
-      BABYLON.Texture.LINEAR_LINEAR
-    );
-    this.normalmapTex.wrapU = BABYLON.Texture.CLAMP_ADDRESSMODE;
-    this.normalmapTex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
-    this.material.setTexture("tNormal", this.normalmapTex);
+    // Remove out-of-range tiles and release resources immediately to prevent VRAM memory leaks
+    for (const [key, tile] of this.activeTiles.entries()) {
+      if (!visibleKeys.has(key)) {
+        if (tile.mesh) tile.mesh.dispose();
+        if (tile.material) tile.material.dispose();
+        if (tile.heightTex) tile.heightTex.dispose();
+        if (tile.normalTex) tile.normalTex.dispose();
+        this.activeTiles.delete(key);
+      }
+    }
   }
   
-  triggerGeomorph() {
-    this.morphProgress = 0.0;
-    this.material.setFloat("uMorphProgress", 0.0);
+  createTile(z, x, y, tileSize, apiProtocol, apiHost) {
+    const key = `${z}_${x}_${y}`;
     
-    const animateMorph = () => {
-      this.morphProgress += 1.0 / 15.0; // 15-frame window
-      if (this.morphProgress >= 1.0) {
-        this.morphProgress = 1.0;
-        this.material.setFloat("uMorphProgress", 1.0);
-        this.heightmapTexPrev = this.heightmapTex;
-        this.material.setTexture("tHeightPrev", this.heightmapTexPrev);
-      } else {
-        this.material.setFloat("uMorphProgress", this.morphProgress);
-        requestAnimationFrame(animateMorph);
+    // High performance subdivision grid for rendering
+    const subdivisions = 64;
+    const mesh = BABYLON.MeshBuilder.CreateGround(
+      `tile_${key}`,
+      { width: tileSize, height: tileSize, subdivisions: subdivisions },
+      this.scene
+    );
+    mesh.receiveShadows = true;
+    
+    // Place tile into correct grid coordinate slot in world space
+    const posX = -1000.0 + x * tileSize + tileSize / 2.0;
+    const posZ = -1000.0 + y * tileSize + tileSize / 2.0;
+    mesh.position.set(posX, 0.0, posZ);
+    
+    const material = new BABYLON.ShaderMaterial(
+      `tileMaterial_${key}`,
+      this.scene,
+      {
+        vertex: "weatherTerrain",
+        fragment: "weatherTerrain",
+      },
+      {
+        attributes: ["position", "uv"],
+        uniforms: [
+          "world", "view", "projection", "worldViewProjection",
+          "uScale", "uMorphProgress", "activeLayer", "timeOfDay",
+          "uLightDir", "uLightColor", "uTileOffset", "uTileScale"
+        ],
+        samplers: ["tHeight", "tHeightPrev", "tNormal", "tWeather"]
+      }
+    );
+    
+    // Bind cached global variables
+    material.setFloat("uScale", this.uniforms.uScale);
+    material.setFloat("uMorphProgress", this.uniforms.uMorphProgress);
+    material.setInt("activeLayer", this.uniforms.activeLayer);
+    material.setFloat("timeOfDay", this.uniforms.timeOfDay);
+    material.setVector3("uLightDir", this.uniforms.uLightDir);
+    material.setColor3("uLightColor", this.uniforms.uLightColor);
+    
+    // Bind tile-specific mapping offsets
+    const tilesCount = Math.pow(2, z);
+    material.setVector2("uTileOffset", new BABYLON.Vector2(x, y));
+    material.setFloat("uTileScale", 1.0 / tilesCount);
+    
+    if (this.weatherTex) {
+      material.setTexture("tWeather", this.weatherTex);
+    }
+    
+    // Hide mesh until texture content is fully ready to prevent pops
+    mesh.setEnabled(false);
+    
+    let texturesLoaded = 0;
+    const checkLoaded = () => {
+      texturesLoaded++;
+      if (texturesLoaded === 2) {
+        mesh.setEnabled(true);
       }
     };
-    requestAnimationFrame(animateMorph);
+    
+    const heightUrl = `${apiProtocol}//${apiHost}/tiles/${z}/height/${x}_${y}.png`;
+    const heightTex = new BABYLON.Texture(
+      heightUrl,
+      this.scene,
+      true,
+      true, // invertY: true
+      BABYLON.Texture.LINEAR_LINEAR,
+      checkLoaded,
+      (err) => console.warn(`Failed to load tile heightmap: ${heightUrl}`, err)
+    );
+    heightTex.wrapU = BABYLON.Texture.CLAMP_ADDRESSMODE;
+    heightTex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
+    
+    const normalUrl = `${apiProtocol}//${apiHost}/tiles/${z}/normal/${x}_${y}.png`;
+    const normalTex = new BABYLON.Texture(
+      normalUrl,
+      this.scene,
+      true,
+      true, // invertY: true
+      BABYLON.Texture.LINEAR_LINEAR,
+      checkLoaded,
+      (err) => console.warn(`Failed to load tile normalmap: ${normalUrl}`, err)
+    );
+    normalTex.wrapU = BABYLON.Texture.CLAMP_ADDRESSMODE;
+    normalTex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
+    
+    material.setTexture("tHeight", heightTex);
+    material.setTexture("tHeightPrev", heightTex);
+    material.setTexture("tNormal", normalTex);
+    
+    mesh.material = material;
+    
+    this.activeTiles.set(key, {
+      mesh,
+      material,
+      heightTex,
+      normalTex
+    });
   }
   
-  updateHeightmap(newTexture) {
-    this.heightmapTexPrev = this.heightmapTex;
-    this.material.setTexture("tHeightPrev", this.heightmapTexPrev);
+  updateUniforms(activeLayer, timeOfDay, lightDir, lightColor) {
+    this.uniforms.activeLayer = activeLayer;
+    this.uniforms.timeOfDay = timeOfDay;
+    this.uniforms.uLightDir.copyFrom(lightDir);
+    this.uniforms.uLightColor.copyFrom(lightColor);
     
-    this.heightmapTex = newTexture;
-    this.material.setTexture("tHeight", this.heightmapTex);
-    
-    this.triggerGeomorph();
+    for (const tile of this.activeTiles.values()) {
+      if (tile.material) {
+        tile.material.setInt("activeLayer", activeLayer);
+        tile.material.setFloat("timeOfDay", timeOfDay);
+        tile.material.setVector3("uLightDir", lightDir);
+        tile.material.setColor3("uLightColor", lightColor);
+      }
+    }
   }
-
+  
   updateWeatherTexture(physics) {
     const data = new Float32Array(this.terrainWidth * this.terrainHeight * 4);
     
@@ -263,4 +362,7 @@ export class WeatherTerrain {
       this.weatherTex.update(data);
     }
   }
+  
+  // Stub for backwards-compatibility or manual switches
+  loadCoarseTextures() {}
 }
