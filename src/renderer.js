@@ -81,8 +81,8 @@ export class WeatherRenderer {
     this.camera = new BABYLON.ArcRotateCamera(
       "MainCamera",
       -Math.PI / 2,
-      Math.PI / 3.6,
-      1900,
+      Math.PI / 3.2,
+      2000,
       new BABYLON.Vector3(0, 0, 0),
       this.scene
     );
@@ -382,8 +382,8 @@ export class WeatherRenderer {
       
       this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
       this.camera.alpha = -Math.PI / 2;
-      this.camera.beta = Math.PI / 3.6;
-      this.camera.radius = 1900;
+      this.camera.beta = Math.PI / 3.2;
+      this.camera.radius = 2000;
       
       this.camera.update();
     }
@@ -406,8 +406,8 @@ export class WeatherRenderer {
     
     this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
     this.camera.alpha = -Math.PI / 2;
-    this.camera.beta = Math.PI / 3.6;
-    this.camera.radius = 1900;
+    this.camera.beta = Math.PI / 3.2;
+    this.camera.radius = 2000;
     
     this.camera.update();
     this.camera.inertia = oldInertia;
@@ -419,9 +419,9 @@ export class WeatherRenderer {
     if (this.camera && this.canvas) {
       console.log(`[Client Renderer] attachCameraControls: Target before attach: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
       
-      // Modern BabylonJS signature: attachControl(noPreventDefault, useCtrlForPanning, panningMouseButton)
+      // Legacy Overload signature mapping: attachControl(element, noPreventDefault, useCtrlForPanning, panningMouseButton)
       // Binding panning explicitly to Ctrl + Left Mouse Button (button 0)
-      this.camera.attachControl(true, true, 0);
+      this.camera.attachControl(this.canvas, true, true, 0);
       
       // Fallbacks to guarantee pointers input handles it correctly
       this.camera.useCtrlForPanning = true;
