@@ -60,7 +60,9 @@ export class WeatherTerrain {
       void main() {
         vUv = uv;
         // Calculate global UV coordinates relative to the full terrain grid
-        vUvGlobal = uTileOffset * uTileScale + uv * uTileScale;
+        vUvGlobal.x = uTileOffset.x * uTileScale + uv.x * uTileScale;
+        float tilesCount = 1.0 / uTileScale;
+        vUvGlobal.y = ((tilesCount - 1.0 - uTileOffset.y) + uv.y) * uTileScale;
         
         // GPU-based Geomorphing (lerps height from prev to target to prevent LOD pops)
         float hTarget = texture2D(tHeight, uv).r;
@@ -288,7 +290,7 @@ export class WeatherTerrain {
     
     // Place tile into correct grid coordinate slot in world space
     const posX = -1000.0 + x * tileSize + tileSize / 2.0;
-    const posZ = -1000.0 + y * tileSize + tileSize / 2.0;
+    const posZ = 1000.0 - y * tileSize - tileSize / 2.0;
     mesh.position.set(posX, 0.0, posZ);
     
     const material = new BABYLON.ShaderMaterial(
