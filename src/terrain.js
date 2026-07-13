@@ -6,7 +6,7 @@ import * as BABYLON from '@babylonjs/core';
 export class WeatherTerrain {
   constructor(scene) {
     this.scene = scene;
-    this.activeTiles = new Map(); // Key: "z_x_y" -> Value: { mesh, material, heightTex, normalTex, loaded }
+    this.activeTiles = new Map(); // Key: "z_x_y" -> Value: { mesh, material, heightTex, normalTex, flowTex, loaded }
     
     this.terrainWidth = 256;
     this.terrainHeight = 256;
@@ -23,7 +23,9 @@ export class WeatherTerrain {
       uLightColor: new BABYLON.Color3(1.0, 1.0, 1.0),
       uIsZoomed: 0.0,
       uWeatherOffset: new BABYLON.Vector2(0.0, 0.0),
-      uWeatherScale: 1.0
+      uWeatherScale: 1.0,
+      uSeason: 1,
+      uTime: 0.0
     };
     
     this.weatherTex = null;
@@ -87,6 +89,8 @@ export class WeatherTerrain {
       precision highp float;
       uniform sampler2D tNormal;
       uniform sampler2D tWeather;
+      uniform sampler2D tFlow;
+      
       uniform int activeLayer;
       uniform float timeOfDay;
       uniform vec3 uLightDir;
@@ -95,6 +99,9 @@ export class WeatherTerrain {
       uniform vec2 uWeatherOffset;
       uniform float uWeatherScale;
       uniform float uIsZoomed;
+      
+      uniform int uSeason;
+      uniform float uTime;
 
       varying vec2 vUv;
       varying vec2 vUvGlobal;
@@ -104,6 +111,33 @@ export class WeatherTerrain {
 
       void main() {
         vec3 normal = normalize(vNormal);
+        
+        // Sample static hydrology flowmap: R/G are X/Y slope directions, B is flow accumulation (riverbed width)
+        vec3 flowData = texture2D(tFlow, vUv).rgb;
+        vec2 flowDir = normalize(flowData.rg * 2.0 - 1.0 + 1e-5);
+        float flowStrength = flowData.b;
+        
+        // Rivers are carved where flow accumulation is high (Blue channel > 0.15)
+        bool isWaterBody = (vHeight < 0.08) || (activeLayer == 0 && flowStrength > 0.15 && vHeight < 0.22);
+        
+        if (isWaterBody) {
+          // Flow speed scales with river width
+          float speedMultiplier = max(0.2, flowStrength * 1.5);
+          float progress1 = fract(uTime * 0.08 * speedMultiplier);
+          float progress2 = fract(uTime * 0.08 * speedMultiplier + 0.5);
+          
+          vec2 uvOffset1 = flowDir * progress1 * 0.08;
+          vec2 uvOffset2 = flowDir * progress2 * 0.08;
+          
+          // Valve-style flowmap normal blending to prevent stretch artifacts
+          vec3 n1 = texture2D(tNormal, vUv - uvOffset1).rgb * 2.0 - 1.0;
+          vec3 n2 = texture2D(tNormal, vUv - uvOffset2).rgb * 2.0 - 1.0;
+          
+          float blend = abs(0.5 - progress1) / 0.5;
+          vec3 normalPerturb = normalize(mix(n1, n2, blend));
+          normal = normalize(normal + normalPerturb * 0.35);
+        }
+
         vec3 lightDir = normalize(-uLightDir);
         float diffuse = max(0.12, dot(normal, lightDir));
 
@@ -125,6 +159,9 @@ export class WeatherTerrain {
         if (activeLayer == 0 || activeLayer == 2) {
           if (vHeight < 0.08) {
             baseColor = vec3(0.08, 0.18, 0.36); // Ocean
+          } else if (isWaterBody) {
+            // Billow Beer's Law style shading for river depth
+            baseColor = mix(vec3(0.15, 0.32, 0.52), vec3(0.08, 0.18, 0.32), clamp((vHeight - 0.08) * 4.0, 0.0, 1.0));
           } else if (vHeight < 0.12) {
             baseColor = vec3(0.85, 0.82, 0.65); // Sand
           } else if (vHeight > 0.6) {
@@ -132,7 +169,16 @@ export class WeatherTerrain {
           } else if (vHeight > 0.45) {
             baseColor = vec3(0.45, 0.42, 0.38); // Rock
           } else {
-            baseColor = mix(vec3(0.2, 0.4, 0.15), vec3(0.12, 0.3, 0.1), wData.g);
+            // Apply Seasonal Colors to vegetation
+            vec3 grassColor = vec3(0.2, 0.4, 0.15); // Summer default
+            if (uSeason == 0) {
+              grassColor = vec3(0.22, 0.48, 0.12); // Spring: vibrant green
+            } else if (uSeason == 2) {
+              grassColor = mix(vec3(0.48, 0.32, 0.1), vec3(0.55, 0.25, 0.08), moist); // Autumn: warm orange/gold
+            } else if (uSeason == 3) {
+              grassColor = vec3(0.35, 0.32, 0.28); // Winter: dry frosty grey-brown
+            }
+            baseColor = mix(grassColor, vec3(0.12, 0.3, 0.1), wData.g);
           }
 
           if (activeLayer == 2) {
@@ -242,7 +288,6 @@ export class WeatherTerrain {
     }
     
     // Only perform the transition swap when all target zoom meshes are fully loaded.
-    // This prevents layout flickering and avoids disabling the floor plane under the camera target.
     if (allTargetTilesLoaded) {
       // 1. Enable new target tiles
       for (const key of visibleKeys) {
@@ -262,6 +307,7 @@ export class WeatherTerrain {
           if (tile.material) tile.material.dispose();
           if (tile.heightTex) tile.heightTex.dispose();
           if (tile.normalTex) tile.normalTex.dispose();
+          if (tile.flowTex) tile.flowTex.dispose();
           this.activeTiles.delete(key);
         }
       }
@@ -273,8 +319,7 @@ export class WeatherTerrain {
   createTile(z, x, y, tileSize, apiProtocol, apiHost) {
     const key = `${z}_${x}_${y}`;
     
-    // Configure subdivision grid dynamically: higher resolution when zoomed out to retain overview shape,
-    // lower subdivision per tile when zoomed in close to maintain stable high frame rates.
+    // Configure subdivision grid dynamically
     let subdivisions = 64;
     if (z === 0) subdivisions = 255;
     else if (z === 1) subdivisions = 128;
@@ -290,7 +335,7 @@ export class WeatherTerrain {
     
     // Place tile into correct grid coordinate slot in world space
     const posX = -1000.0 + x * tileSize + tileSize / 2.0;
-    const posZ = 1000.0 - y * tileSize - tileSize / 2.0;
+    const posZ = -1000.0 + y * tileSize + tileSize / 2.0;
     mesh.position.set(posX, 0.0, posZ);
     
     const material = new BABYLON.ShaderMaterial(
@@ -306,9 +351,10 @@ export class WeatherTerrain {
           "world", "view", "projection", "worldViewProjection",
           "uScale", "uMorphProgress", "activeLayer", "timeOfDay",
           "uLightDir", "uLightColor", "uTileOffset", "uTileScale",
-          "uWeatherOffset", "uWeatherScale", "uIsZoomed"
+          "uWeatherOffset", "uWeatherScale", "uIsZoomed",
+          "uSeason", "uTime"
         ],
-        samplers: ["tHeight", "tHeightPrev", "tNormal", "tWeather"]
+        samplers: ["tHeight", "tHeightPrev", "tNormal", "tWeather", "tFlow"]
       }
     );
     
@@ -322,6 +368,8 @@ export class WeatherTerrain {
     material.setFloat("uIsZoomed", this.uniforms.uIsZoomed);
     material.setVector2("uWeatherOffset", this.uniforms.uWeatherOffset);
     material.setFloat("uWeatherScale", this.uniforms.uWeatherScale);
+    material.setInt("uSeason", this.uniforms.uSeason);
+    material.setFloat("uTime", this.uniforms.uTime);
     
     // Bind tile-specific mapping offsets
     const tilesCount = Math.pow(2, z);
@@ -340,15 +388,15 @@ export class WeatherTerrain {
       material,
       heightTex: null,
       normalTex: null,
+      flowTex: null,
       loaded: false
     };
     
     let texturesLoaded = 0;
     const checkLoaded = () => {
       texturesLoaded++;
-      if (texturesLoaded === 2) {
+      if (texturesLoaded === 3) { // Require height, normal, and flow maps to be fully loaded
         tileObj.loaded = true;
-        // If we are modifying tiles within the current active zoom level, enable immediately on load
         if (z === this.currentZoom) {
           mesh.setEnabled(true);
         }
@@ -381,23 +429,48 @@ export class WeatherTerrain {
     normalTex.wrapU = BABYLON.Texture.CLAMP_ADDRESSMODE;
     normalTex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
     
+    const flowUrl = `${apiProtocol}//${apiHost}/tiles/${z}/flow/${x}_${y}.png`;
+    const flowTex = new BABYLON.Texture(
+      flowUrl,
+      this.scene,
+      true,
+      true, // invertY must be true to match Babylon texture coordinate mapping
+      BABYLON.Texture.LINEAR_LINEAR,
+      checkLoaded,
+      (err) => console.warn(`Failed to load tile flowmap: ${flowUrl}`, err)
+    );
+    flowTex.wrapU = BABYLON.Texture.CLAMP_ADDRESSMODE;
+    flowTex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
+    
     material.setTexture("tHeight", heightTex);
     material.setTexture("tHeightPrev", heightTex);
     material.setTexture("tNormal", normalTex);
+    material.setTexture("tFlow", flowTex);
     
     tileObj.heightTex = heightTex;
     tileObj.normalTex = normalTex;
+    tileObj.flowTex = flowTex;
     
     mesh.material = material;
     
     this.activeTiles.set(key, tileObj);
   }
   
-  updateUniforms(activeLayer, timeOfDay, lightDir, lightColor, isZoomed, focusX, focusY) {
+  updateUniforms(activeLayer, timeOfDay, lightDir, lightColor, isZoomed, focusX, focusY, season, time) {
     this.uniforms.activeLayer = activeLayer;
     this.uniforms.timeOfDay = timeOfDay;
     this.uniforms.uLightDir.copyFrom(lightDir);
     this.uniforms.uLightColor.copyFrom(lightColor);
+    this.uniforms.uTime = time;
+    
+    const seasonMap = {
+      'spring': 0,
+      'summer': 1,
+      'autumn': 2,
+      'winter': 3
+    };
+    const seasonInt = seasonMap[season] ?? 1;
+    this.uniforms.uSeason = seasonInt;
     
     // Calculate regional weather texture viewport boundaries
     const serverWidth = 1024;
@@ -420,6 +493,8 @@ export class WeatherTerrain {
         tile.material.setFloat("uIsZoomed", this.uniforms.uIsZoomed);
         tile.material.setVector2("uWeatherOffset", this.uniforms.uWeatherOffset);
         tile.material.setFloat("uWeatherScale", this.uniforms.uWeatherScale);
+        tile.material.setInt("uSeason", seasonInt);
+        tile.material.setFloat("uTime", time);
       }
     }
   }

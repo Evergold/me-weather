@@ -182,6 +182,47 @@ def get_chunk_from_tiled_source(left, top, right, bottom, source_dir, manifest, 
                 
     return canvas
 
+def generate_flowmap(heightmap_path, flowmap_path):
+    print("[Hydrology] Generating master flowmap...")
+    with Image.open(heightmap_path) as img:
+        img_l = img.convert("L")
+        w, h = img_l.size
+        heightmap = np.array(img_l, dtype=np.float32) / 255.0
+
+    # Neighbor shifts representing 8 neighbors
+    shifts = [
+        (-1, -1), (0, -1), (1, -1),
+        (-1, 0),           (1, 0),
+        (-1, 1),  (0, 1),  (1, 1)
+    ]
+    
+    lowest_h = heightmap.copy()
+    dir_x = np.zeros_like(heightmap)
+    dir_y = np.zeros_like(heightmap)
+    
+    for dx, dy in shifts:
+        n_h = np.roll(np.roll(heightmap, -dy, axis=0), -dx, axis=1)
+        mask = n_h < lowest_h
+        lowest_h[mask] = n_h[mask]
+        dir_x[mask] = dx
+        dir_y[mask] = dy
+
+    # Calculate flow accumulation using HydrologySolver
+    solver = HydrologySolver(width=w, height=h)
+    rain_dummy = np.ones((h, w), dtype=np.float32) * 0.1
+    solver.update_flow_accumulation(heightmap.flatten(), rain_dummy.flatten())
+    flow_acc = solver.flow_accumulation.reshape((h, w))
+    
+    # Store flow map coordinates
+    flow_img_data = np.zeros((h, w, 3), dtype=np.uint8)
+    flow_img_data[:, :, 0] = np.clip((dir_x + 1.0) / 2.0 * 255.0, 0, 255).astype(np.uint8)
+    flow_img_data[:, :, 1] = np.clip((dir_y + 1.0) / 2.0 * 255.0, 0, 255).astype(np.uint8)
+    flow_img_data[:, :, 2] = np.clip(np.log1p(flow_acc) * 45.0, 0, 255).astype(np.uint8)
+    
+    flow_out = Image.fromarray(flow_img_data, "RGB")
+    flow_out.save(flowmap_path)
+    print("[Hydrology] Master flowmap generated successfully.")
+
 # Pre-slicing terrain tiles on startup
 def pre_slice_map(img_path, map_type="height"):
     """Pre-slices the master image dynamically based on dimensions (level 0 up to 5 or 6)."""
@@ -277,6 +318,12 @@ except Exception as e:
 pre_slice_map(HEIGHTMAP_PATH, "height")
 pre_slice_map(NORMALMAP_PATH, "normal")
 
+# Generate and slice hydrology flow map (Feature requirement for Phase 4 Flow Map Shader)
+FLOWMAP_PATH = os.path.join(ASSETS_DIR, "flowmap.png")
+if not os.path.exists(FLOWMAP_PATH):
+    generate_flowmap(COARSE_HEIGHTMAP_PATH, FLOWMAP_PATH)
+pre_slice_map(FLOWMAP_PATH, "flow")
+
 # Load heightmap into physics solver
 if IS_TILED_MODE:
     physics.load_heightmap(COARSE_HEIGHTMAP_PATH)
@@ -361,6 +408,19 @@ async def simulation_loop():
                 current_wind_angle,
                 current_temp_shift
             )
+
+            # Tick hydrology!
+            # If coupled (DECOUPLE_HYDROLOGY=False), tick every 2s. If decoupled, tick every 10s.
+            decouple_timer += dt * current_sim_speed
+            hydrology_interval = 10.0 if DECOUPLE_HYDROLOGY else 2.0
+            
+            if decouple_timer >= hydrology_interval:
+                decouple_timer = 0.0
+                await asyncio.to_thread(
+                    hydrology.update_flow_accumulation,
+                    physics.heightmap,
+                    physics.rain
+                )
 
         # Allow context switching and pace the ticks
         await asyncio.sleep(0.01)
