@@ -318,7 +318,7 @@ export class WeatherTerrain {
         const parts = key.split("_");
         const tx = parseInt(parts[1]);
         const ty = parseInt(parts[2]);
-        this.createTile(z, tx, ty, tileSize, apiProtocol, apiHost, physics);
+        this.createTile(z, tx, ty, tileSize, apiProtocol, apiHost, camera, physics);
       }
       
       const tile = this.activeTiles.get(key);
@@ -371,7 +371,7 @@ export class WeatherTerrain {
     }
   }
   
-  createTile(z, x, y, tileSize, apiProtocol, apiHost, physics) {
+  createTile(z, x, y, tileSize, apiProtocol, apiHost, camera, physics) {
     const key = `${z}_${x}_${y}`;
     
     // Configure subdivision grid dynamically
@@ -435,8 +435,8 @@ export class WeatherTerrain {
       material.setTexture("tWeather", this.weatherTex);
     }
     
-    // Keep the very first tiles enabled immediately to prevent camera raycast target jumps/freezes on launch
-    if (this.activeTiles.size === 0) {
+    // Keep all initial tiles enabled immediately during the startup phase to prevent camera raycast target jumps/freezes
+    if (!this.initialTilesLoaded) {
       mesh.setEnabled(true);
     } else {
       mesh.setEnabled(false);
@@ -466,6 +466,9 @@ export class WeatherTerrain {
         if (z >= 2) {
           this.buildVegetationSPS(tileObj, z, posX, posZ, tileSize, physics);
         }
+
+        // Trigger updateTiles to check if all target tiles are loaded
+        this.updateTiles(camera, physics);
       }
     };
     
