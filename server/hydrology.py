@@ -4,7 +4,7 @@
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 
-class HydrologySolver8k:
+class HydrologySolver:
     def __init__(self, width=8192, height=8192):
         self.width = width
         self.height = height
@@ -14,7 +14,7 @@ class HydrologySolver8k:
 
     def precompute_flow_directions(self, heightmap):
         """Pre-sorts cell indices by elevation (descending) to optimize flow sweep."""
-        print("[Hydrology] Pre-computing flow accumulation nodes (sorting 8k grid)...")
+        print("[Hydrology] Pre-computing flow accumulation nodes (sorting simulation grid)...")
         # Sort cells descending. Highest cells propagate water first.
         self.sorted_indices = np.argsort(-heightmap)
         print("[Hydrology] Flow sorting complete.")
@@ -50,7 +50,7 @@ class HydrologySolver8k:
             (-1, 1),  (0, 1),  (1, 1)
         ]
 
-        # In a fully detailed 8k simulation, a raw python loop over 67M elements takes too long.
+        # In a fully detailed high-resolution simulation, a raw python loop over massive elements takes too long.
         # Therefore, we optimize by executing on a downsampled 1k grid for the dynamic river path calculation,
         # or execute a fast localized sweep on active rainfall areas.
         # Let's run a fast grid-based routing:
@@ -59,7 +59,7 @@ class HydrologySolver8k:
             return
 
         # Downsample the water routing to 1024x1024 for high-performance CPU ticking,
-        # then project the river channels back onto the 8k map.
+        # then project the river channels back onto the high-resolution map.
         # This keeps the hydrology calculations running in under 200ms!
         ds_factor = 8
         ds_w, ds_h = w // ds_factor, h // ds_factor
@@ -99,7 +99,7 @@ class HydrologySolver8k:
             if lowest_idx != -1:
                 flat_flow[lowest_idx] += flat_flow[idx]
 
-        # Project flow back to 8k grid (upsample with bilinear/nearest interpolation)
+        # Project flow back to simulation grid (upsample with bilinear/nearest interpolation)
         # Using simple kronecker product for speed
         flow_upsampled = np.repeat(np.repeat(ds_flow, ds_factor, axis=0), ds_factor, axis=1)
         self.flow_accumulation = flow_upsampled.flatten()[:self.size]

@@ -13,7 +13,7 @@ try:
 except ImportError:
     HAS_WGPU = False
 
-class WeatherPhysics8k:
+class WeatherPhysics:
     def __init__(self, width=8192, height=8192, use_gpu=True):
         self.width = width
         self.height = height
@@ -321,7 +321,7 @@ class WeatherPhysics8k:
 
     def get_serialized_grid(self, downsample_factor=8):
         """Downsamples and packages active weather layers into a flat binary array (quantized float16)."""
-        # Downsample grid for WebSocket delivery (e.g. 8k downsampled by 8 = 1024x1024)
+        # Downsample grid dynamically for WebSocket delivery based on the downsample factor
         ds_w = self.width // downsample_factor
         ds_h = self.height // downsample_factor
 

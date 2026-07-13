@@ -20,8 +20,8 @@ from dotenv import load_dotenv
 # Load environment configuration
 load_dotenv()
 
-from physics_solver import WeatherPhysics8k
-from hydrology import HydrologySolver8k
+from physics_solver import WeatherPhysics
+from hydrology import HydrologySolver
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -89,8 +89,8 @@ else:
     sim_w_solver, sim_h_solver = SIM_WIDTH, SIM_HEIGHT
 
 # Global simulation state
-physics = WeatherPhysics8k(width=sim_w_solver, height=sim_h_solver, use_gpu=True)
-hydrology = HydrologySolver8k(width=sim_w_solver, height=sim_h_solver)
+physics = WeatherPhysics(width=sim_w_solver, height=sim_h_solver, use_gpu=True)
+hydrology = HydrologySolver(width=sim_w_solver, height=sim_h_solver)
 
 # Global simulation variables (Shared state)
 sim_time_of_day = 480.0  # 8:00 AM (minutes past midnight)
@@ -121,7 +121,7 @@ def pre_slice_map(img_path, map_type="height"):
     w, h = img.size
 
     # Calculate max zoom dynamically: 256px tile size.
-    # 8k maps have max zoom Z=5 (2^5 = 32 tiles). 16k maps have Z=6 (2^6 = 64 tiles).
+    # Low-res maps have max zoom Z=5. High-res (16k+) maps have Z=6 or higher.
     max_zoom = int(math.log2(w // 256))
     max_zoom = max(0, min(7, max_zoom)) # clamp Z to sensible bounds [0, 7]
 
@@ -247,7 +247,7 @@ async def simulation_loop():
             async with state_lock:
                 sim_time_of_day = next_time_of_day
 
-            # Tick physics (runs 8k CPU/GPU steps) in background thread to avoid blocking main thread
+            # Tick physics in background thread to avoid blocking main thread
             await asyncio.to_thread(
                 physics.update,
                 dt * current_sim_speed,
