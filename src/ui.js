@@ -108,21 +108,27 @@ export class WeatherUI {
         clearInterval(checkInterval);
         console.log(`[UI] Launching dashboard. Setup took ${elapsed.toFixed(0)}ms. (Physics: ${isPhysicsReady}, Renderer: ${isRendererReady}, Socket: ${isSocketReady})`);
         
-        this.landingScreen.classList.remove('active');
-        this.dashboardScreen.classList.add('active');
-        
-        // Force browser style flush and layout reflow so the canvas gets its active dimensions immediately
-        const reflowW = this.canvas.clientWidth;
-        const reflowH = this.canvas.clientHeight;
-        
-        // Force resize immediately to compute correct layout dimensions of the canvas
+        this.launchDashboard();
+      }
+    }, 100);
+  }
+
+  launchDashboard() {
+    // Prevent double invocation
+    if (this.dashboardScreen.classList.contains('active')) return;
+    
+    this.landingScreen.classList.remove('active');
+    this.dashboardScreen.classList.add('active');
+
+    // Wait until browser has completed layout and the canvas has a non-zero layout size.
+    // This mathematically prevents ArcRotateCamera projection matrix NaN/corrupted aspect ratio calculations.
+    const checkCanvasSize = () => {
+      if (this.canvas.clientWidth > 0 && this.canvas.clientHeight > 0) {
         if (this.renderer && this.renderer.engine) {
           this.renderer.engine.resize();
         }
         window.dispatchEvent(new Event('resize'));
-        
-        // Reset camera default target/position and attach controls now that layout is completely stable and canvas is visible,
-        // using a short delay to allow the style transition to settle and avoid snapping inputs.
+
         if (this.renderer) {
           this.renderer.resetCameraToDefault();
           setTimeout(() => {
@@ -130,17 +136,20 @@ export class WeatherUI {
             this.renderer.attachCameraControls();
           }, 750);
         }
-        
+
         this.simSpeed = 1;
         this.physics.sendSettings({ simSpeed: 1 });
         this.startSimulationLoop();
         
-        // Safety backup resize shortly after transition begins
+        // Safety backup resize shortly after layout settles
         setTimeout(() => {
           window.dispatchEvent(new Event('resize'));
         }, 100);
+      } else {
+        requestAnimationFrame(checkCanvasSize);
       }
-    }, 100);
+    };
+    checkCanvasSize();
   }
 
   bindEvents() {
@@ -164,46 +173,11 @@ export class WeatherUI {
 
     // 1. File Upload / Landing Events (Re-purposed to connect directly)
     this.dropZone.addEventListener('click', () => {
-      this.landingScreen.classList.remove('active');
-      this.dashboardScreen.classList.add('active');
-      
-      const reflowW = this.canvas.clientWidth;
-      if (this.renderer && this.renderer.engine) {
-        this.renderer.engine.resize();
-      }
-      window.dispatchEvent(new Event('resize'));
-      if (this.renderer) {
-        this.renderer.resetCameraToDefault();
-        setTimeout(() => {
-          this.renderer.resetCameraToDefault();
-          this.renderer.attachCameraControls();
-        }, 750);
-      }
-      this.simSpeed = 1;
-      this.physics.sendSettings({ simSpeed: 1 });
-      this.startSimulationLoop();
+      this.launchDashboard();
     });
     
     this.fileInput.addEventListener('change', (e) => {
-      // Direct load
-      this.landingScreen.classList.remove('active');
-      this.dashboardScreen.classList.add('active');
-      
-      const reflowW = this.canvas.clientWidth;
-      if (this.renderer && this.renderer.engine) {
-        this.renderer.engine.resize();
-      }
-      window.dispatchEvent(new Event('resize'));
-      if (this.renderer) {
-        this.renderer.resetCameraToDefault();
-        setTimeout(() => {
-          this.renderer.resetCameraToDefault();
-          this.renderer.attachCameraControls();
-        }, 750);
-      }
-      this.simSpeed = 1;
-      this.physics.sendSettings({ simSpeed: 1 });
-      this.startSimulationLoop();
+      this.launchDashboard();
     });
 
     this.dropZone.addEventListener('dragover', (e) => {
@@ -218,24 +192,7 @@ export class WeatherUI {
     this.dropZone.addEventListener('drop', (e) => {
       e.preventDefault();
       this.dropZone.classList.remove('dragover');
-      this.landingScreen.classList.remove('active');
-      this.dashboardScreen.classList.add('active');
-      
-      const reflowW = this.canvas.clientWidth;
-      if (this.renderer && this.renderer.engine) {
-        this.renderer.engine.resize();
-      }
-      window.dispatchEvent(new Event('resize'));
-      if (this.renderer) {
-        this.renderer.resetCameraToDefault();
-        setTimeout(() => {
-          this.renderer.resetCameraToDefault();
-          this.renderer.attachCameraControls();
-        }, 750);
-      }
-      this.simSpeed = 1;
-      this.physics.sendSettings({ simSpeed: 1 });
-      this.startSimulationLoop();
+      this.launchDashboard();
     });
 
     // 2. Dashboard Resets
