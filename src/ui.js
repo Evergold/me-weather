@@ -296,6 +296,9 @@ export class WeatherUI {
 
     // 10. Canvas Right-Click (Add Custom Pin)
     this.canvas.addEventListener('contextmenu', (e) => {
+      // If Ctrl key is pressed, this is intended as a panning action. Do not show custom pin dialog.
+      if (e.ctrlKey) return;
+      
       e.preventDefault();
       const rect = this.canvas.getBoundingClientRect();
       const clickX = (e.clientX - rect.left) / rect.width;
