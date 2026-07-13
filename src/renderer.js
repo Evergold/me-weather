@@ -156,7 +156,7 @@ export class WeatherRenderer {
       const sunsetFactor = Math.max(0, 1 - Math.abs(hour - 17.5) * 1.5);
       const goldenHour = Math.max(sunriseFactor, sunsetFactor);
       
-      lightColor.setRGB(1.0, 0.95, 0.88);
+      lightColor.copyFromFloats(1.0, 0.95, 0.88);
       if (goldenHour > 0) {
         // blend to golden orange
         lightColor.r = lightColor.r * (1 - goldenHour) + 1.0 * goldenHour;
@@ -173,7 +173,7 @@ export class WeatherRenderer {
       const sinMoon = Math.sin(moonAngle);
       const cosMoon = Math.cos(moonAngle);
       lightDir.set(-cosMoon, -sinMoon, -0.3).normalize();
-      lightColor.setRGB(0.12, 0.18, 0.32); // Cool moonlight
+      lightColor.copyFromFloats(0.12, 0.18, 0.32); // Cool moonlight
       
       this.sunLight.direction.copyFrom(lightDir);
       this.sunLight.intensity = 0.35;
