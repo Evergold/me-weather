@@ -108,22 +108,30 @@ HEIGHTS_PATH="assets"
 
 By default, the client uses the high-performance **WebGPU** rendering pipeline (via Babylon.js) with a seamless automatic fallback to **WebGL 2** if WebGPU is unsupported or disabled by the browser. 
 
-Use the following settings to get native WebGPU running on your preferred browser:
+Use the following settings to configure native WebGPU on your operating system:
 
-### 🦁 Brave Browser (Linux / Desktop)
-Brave's default shields and fingerprinting protections block GPU adapter access. 
+### 🦁 Brave Browser (Windows / macOS / Linux)
+Brave's default shields and fingerprinting protections block WebGPU adapter access.
 1.  **Toggle Shields Off**: Click the lion icon in the address bar and toggle **Shields to "Down" (Off)** for `http://localhost:5173` (or `http://localhost:8000`). This stops WebGL warning spam and allows Brave to query WebGPU hardware adapter info.
-2.  **Enable Vulkan**: Navigate to `brave://flags`, search for `#enable-vulkan`, and set it to **Enabled** (Vulkan is required for WebGPU on Linux).
-3.  **Enable WebGPU**: Search for `#enable-unsafe-webgpu` in `brave://flags` and set it to **Enabled**.
-4.  Relaunch Brave.
+2.  **Brave Flags**: Navigate to `brave://flags` in your address bar:
+    *   **All Platforms**: Search for `#enable-unsafe-webgpu` and set it to **Enabled**.
+    *   **Linux Specific**: Search for `#enable-vulkan` and set it to **Enabled** (Vulkan is required for WebGPU in Chromium on Linux).
+3.  Relaunch Brave.
 
 ### 🦊 Firefox (Nightly, Developer Edition, & Release)
-WebGPU is disabled by default on Firefox Release for Linux to protect against graphics driver hangs, but it is fully supported when activated:
-1.  Navigate to `about:config`.
+> [!IMPORTANT]
+> **Firefox Nightly or Developer Edition** is highly recommended. These are currently the only Firefox channels with stable, active updates to the WebGPU/WGSL shader compiler (`naga`). On standard Firefox Release channels (across Windows, macOS, and Linux), WebGPU remains disabled by default.
+
+To enable and configure WebGPU in Firefox:
+1.  Navigate to **`about:config`**.
 2.  Set **`dom.webgpu.enabled`** to `true`.
 3.  Set **`gfx.webgpu.force-enabled`** to `true`.
-4.  Set **`dom.webgpu.wgpu-backend`** to `vulkan` (recommended for Linux).
-5.  *(Optional)* Go to `about:support` and verify that **Compositing** is running on hardware-accelerated **`WebRender`**. If it displays *Software*, set **`gfx.webrender.all`** to `true` in `about:config` to force hardware acceleration.
+4.  Configure **`dom.webgpu.wgpu-backend`** based on your OS:
+    *   **Linux**: Set to **`vulkan`** (highly recommended for Linux graphics drivers).
+    *   **Windows**: Set to **`d3d12`** (forces DirectX 12).
+    *   **macOS**: Set to **`metal`** (forces Apple Metal).
+    *   *Alternatively, reset/leave this preference blank to let Firefox auto-select the best API.*
+5.  *(Optional)* Go to `about:support` and verify that **Compositing** displays hardware-accelerated **`WebRender`**. If it displays *Software*, set **`gfx.webrender.all`** to `true` in `about:config` to force hardware acceleration.
 
 > [!NOTE]
 > **Firefox WebGPU Validation Warnings:**
