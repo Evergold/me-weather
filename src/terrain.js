@@ -12,6 +12,7 @@ export class WeatherTerrain {
     this.terrainHeight = 256;
     
     this.currentZoom = 0;
+    this.initialTilesLoaded = false;
     
     // Cache for material uniform values to apply to newly created tiles
     this.uniforms = {
@@ -366,6 +367,7 @@ export class WeatherTerrain {
       }
       
       this.currentZoom = z;
+      this.initialTilesLoaded = true;
     }
   }
   

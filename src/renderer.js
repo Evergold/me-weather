@@ -107,6 +107,10 @@ export class WeatherRenderer {
     });
   }
 
+  get initialTilesLoaded() {
+    return this.terrain ? this.terrain.initialTilesLoaded : false;
+  }
+
   showWebGLFallbackBanner() {
     if (document.getElementById('webgl-fallback-banner')) return;
     const banner = document.createElement('div');
@@ -216,8 +220,11 @@ export class WeatherRenderer {
     const fy = this.camera ? Math.max(0, Math.min(1, (1000 - this.camera.target.z) / 2000)) : 0.5;
     this.terrain.updateUniforms(layerInt, timeOfDay, lightDir, lightColor, isZoomed, fx, fy, season, this.time);
     
-    // 4. Upload dynamic weather data textures
-    this.terrain.updateWeatherTexture(physics);
+    // 4. Upload dynamic weather data textures (rate-limited when WebSocket payload updates)
+    if (physics.weatherNeedsUpdate || this.tickCount === 1) {
+      this.terrain.updateWeatherTexture(physics);
+      physics.weatherNeedsUpdate = false;
+    }
     
     // 4. Update weather particles
     this.particles.update(physics, toggleWeather, activeLayer, physics.getWeatherAt(0.5, 0.5).windSpeed, physics.getWeatherAt(0.5, 0.5).windAngle);

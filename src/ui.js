@@ -94,17 +94,17 @@ export class WeatherUI {
 
   autoLaunch() {
     // Automatically transition to the dashboard and trigger simulation start on load
-    // only when the textures and WebSocket are fully connected and ready.
+    // only when the terrain tiles and WebSocket are fully connected and ready.
     const startTime = performance.now();
     const checkInterval = setInterval(() => {
       const elapsed = performance.now() - startTime;
       
       const isPhysicsReady = this.physics.isTerrainLoaded;
-      const isRendererReady = this.renderer.isTerrainLoaded;
+      const isRendererReady = this.renderer.initialTilesLoaded;
       const isSocketReady = this.physics.isConnected;
 
-      // Force launch if it takes longer than 5 seconds as a safety fallback
-      if ((isPhysicsReady && isRendererReady && isSocketReady) || elapsed > 5000) {
+      // Force launch if it takes longer than 25 seconds as a safety fallback
+      if ((isPhysicsReady && isRendererReady && isSocketReady) || elapsed > 25000) {
         clearInterval(checkInterval);
         console.log(`[UI] Launching dashboard. Setup took ${elapsed.toFixed(0)}ms. (Physics: ${isPhysicsReady}, Renderer: ${isRendererReady}, Socket: ${isSocketReady})`);
         
