@@ -4,3 +4,5 @@ wgpu
 numpy
 pillow
 websockets
+tifffile
+openexr
