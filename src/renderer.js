@@ -8,7 +8,7 @@ import { WeatherParticles } from './particles.js';
 import { WeatherAcoustics } from './acoustics.js';
 
 export class WeatherRenderer {
-  constructor(canvas) {
+  constructor(canvas, physics) {
     this.canvas = canvas;
     this.engine = null;
     this.scene = null;
@@ -30,10 +30,15 @@ export class WeatherRenderer {
     this.lastSunAngle = -999.0;
     this.tickCount = 0;
     
-    this.initEngine();
+    // Landmark caching flags to prevent per-frame mesh creation/disposal
+    this.lastLandmarksHash = "";
+    this.lastSelectedId = null;
+    this.lastLandmarksVisible = null;
+    
+    this.initEngine(physics);
   }
   
-  async initEngine() {
+  async initEngine(physics) {
     const options = {
       failIfMajorPerformanceCaveat: false,
       useHighPrecisionFloats: true
@@ -101,6 +106,9 @@ export class WeatherRenderer {
     this.terrain.loadCoarseTextures();
     this.isTerrainLoaded = true;
     
+    // Initiate loading of initial tiles
+    this.terrain.updateTiles(this.camera, physics);
+    
     // Listen for window resize
     window.addEventListener('resize', () => {
       this.engine.resize();
@@ -147,9 +155,19 @@ export class WeatherRenderer {
   }
   
   draw(physics, activeLayer, toggleWind, toggleWeather, toggleLandmarks, landmarks, selectedLandmarkId, timeOfDay, season) {
-    if (!this.scene) return;
+    if (!this.scene || !this.engine) return;
+    
+    // Skip rendering if canvas is not yet laid out in DOM (dimensions are 0) to avoid aspect-ratio NaN/projection corruption
+    if (this.canvas.clientWidth === 0 || this.canvas.clientHeight === 0) {
+      return;
+    }
     
     this.tickCount++;
+    
+    // Explicitly resize on the first few frames to match actual layout size
+    if (this.tickCount <= 5) {
+      this.engine.resize();
+    }
     const simSpeed = physics.speed ?? 1.0;
     if (simSpeed > 0) {
       this.time = (this.time || 0.0) + 0.016 * simSpeed;
@@ -264,6 +282,18 @@ export class WeatherRenderer {
   }
   
   drawLandmarks(landmarks, selectedId, visible, physics) {
+    const listHash = landmarks.map(lm => `${lm.id}_${lm.x}_${lm.y}`).join(",");
+    const changeDetected = 
+      listHash !== this.lastLandmarksHash || 
+      selectedId !== this.lastSelectedId || 
+      visible !== this.lastLandmarksVisible;
+      
+    if (!changeDetected) return;
+    
+    this.lastLandmarksHash = listHash;
+    this.lastSelectedId = selectedId;
+    this.lastLandmarksVisible = visible;
+
     // Clear old markers meshes
     this.markers.forEach(m => m.dispose());
     this.markers = [];
@@ -326,7 +356,7 @@ export class WeatherRenderer {
       this.camera.alpha = -Math.PI / 2;
       this.camera.beta = 0.001; // directly overhead
       this.camera.radius = fitRadius;
-      this.camera.target.set(0, 0, 0);
+      this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
       
       // Lock rotation limits to prevent user from dragging to rotate in 2D view
       this.camera.lowerAlphaLimit = -Math.PI / 2;
@@ -343,7 +373,7 @@ export class WeatherRenderer {
       this.camera.alpha = -Math.PI / 2;
       this.camera.beta = Math.PI / 3;
       this.camera.radius = 1200;
-      this.camera.target.set(0, 0, 0);
+      this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
     }
   }
   
