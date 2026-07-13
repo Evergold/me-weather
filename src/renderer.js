@@ -162,9 +162,6 @@ export class WeatherRenderer {
     }
     
     this.tickCount++;
-    if (this.camera && this.tickCount <= 20) {
-      console.log(`[Client Renderer] draw tick: ${this.tickCount} pos: ${this.camera.position.toString()} target: ${this.camera.target.toString()} radius: ${this.camera.radius}`);
-    }
     
     // Explicitly resize on the first few frames to match actual layout size
     if (this.tickCount <= 5) {
@@ -396,7 +393,6 @@ export class WeatherRenderer {
 
   resetCameraToDefault() {
     if (!this.camera) return;
-    console.log(`[Client Renderer] resetCameraToDefault: entry. Target before: ${this.camera.target.toString()} Radius before: ${this.camera.radius}`);
     
     const oldInertia = this.camera.inertia;
     this.camera.inertia = 0;
@@ -411,14 +407,10 @@ export class WeatherRenderer {
     
     this.camera.update();
     this.camera.inertia = oldInertia;
-    
-    console.log(`[Client Renderer] resetCameraToDefault: exit. Position: ${this.camera.position.toString()} Target: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
   }
 
   attachCameraControls() {
     if (this.camera && this.canvas) {
-      console.log(`[Client Renderer] attachCameraControls: Target before attach: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
-      
       this.camera.attachControl(this.canvas, true);
       this.camera.useCtrlForPanning = true;
       
@@ -454,8 +446,6 @@ export class WeatherRenderer {
         };
         window.addEventListener('pointerdown', this._pointerListener, true); // Intercept at window capture level!
       }
-      
-      console.log(`[Client Renderer] attachCameraControls: Target after attach: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
     }
   }
 }
