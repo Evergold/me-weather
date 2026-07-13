@@ -81,13 +81,11 @@ export class WeatherRenderer {
     this.camera = new BABYLON.ArcRotateCamera(
       "MainCamera",
       -Math.PI / 2,
-      Math.PI / 3, // temporary default, overridden by position/target
-      1000,
-      new BABYLON.Vector3(0, 0, 0),
+      Math.PI / 3.6,
+      1200,
+      new BABYLON.Vector3(0, 150, 0),
       this.scene
     );
-    this.camera.position.set(0, 800, -1000);
-    this.camera.setTarget(new BABYLON.Vector3(0, 150, 0));
     this.camera.lowerBetaLimit = 0.01;
     this.camera.upperBetaLimit = Math.PI / 2.1; // Prevent going below ground
     this.camera.lowerRadiusLimit = 20;
@@ -356,16 +354,16 @@ export class WeatherRenderer {
       const fitRadius = Math.max(1000 / Math.tan(fov / 2), 1000 / (Math.tan(fov / 2) * aspect));
       
       // Top down camera locks rotation
-      this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
+      this.camera.setTarget(new BABYLON.Vector3(0, 150, 0));
       this.camera.alpha = -Math.PI / 2;
-      this.camera.beta = 0.001; // directly overhead
+      this.camera.beta = 0.01; // slightly off-center overhead to prevent gimbal lock
       this.camera.radius = fitRadius;
       
       // Lock rotation limits to prevent user from dragging to rotate in 2D view
       this.camera.lowerAlphaLimit = -Math.PI / 2;
       this.camera.upperAlphaLimit = -Math.PI / 2;
-      this.camera.lowerBetaLimit = 0.001;
-      this.camera.upperBetaLimit = 0.001;
+      this.camera.lowerBetaLimit = 0.01;
+      this.camera.upperBetaLimit = 0.01;
     } else {
       // Restore rotation limits
       this.camera.lowerAlphaLimit = null;
@@ -373,10 +371,10 @@ export class WeatherRenderer {
       this.camera.lowerBetaLimit = 0.01;
       this.camera.upperBetaLimit = Math.PI / 2.1;
       
-      this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
+      this.camera.setTarget(new BABYLON.Vector3(0, 150, 0));
       this.camera.alpha = -Math.PI / 2;
       this.camera.beta = Math.PI / 3.6;
-      this.camera.radius = 1300;
+      this.camera.radius = 1200;
     }
   }
   
@@ -387,10 +385,10 @@ export class WeatherRenderer {
   resetCameraToDefault() {
     if (!this.camera) return;
     console.log(`[Client Renderer] resetCameraToDefault: entry. Target before: ${this.camera.target.toString()} Radius before: ${this.camera.radius}`);
-    this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
+    this.camera.setTarget(new BABYLON.Vector3(0, 150, 0));
     this.camera.alpha = -Math.PI / 2;
     this.camera.beta = Math.PI / 3.6;
-    this.camera.radius = 1300;
+    this.camera.radius = 1200;
     console.log(`[Client Renderer] resetCameraToDefault: exit. Position: ${this.camera.position.toString()} Target: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
   }
 
