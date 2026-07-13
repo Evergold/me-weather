@@ -199,8 +199,29 @@ export class WeatherRenderer {
     // 6. Draw Landmarks markers
     this.drawLandmarks(landmarks, selectedLandmarkId, toggleLandmarks, physics);
     
-    // 7. Render frame
+    // 7. Push camera location/zoom telemetry to server for active viewport chunk loading
+    this.updateCameraTelemetry(physics);
+    
+    // 8. Render frame
     this.scene.render();
+  }
+  
+  updateCameraTelemetry(physics) {
+    if (!this.camera) return;
+    
+    const isZoomed = this.camera.radius < 500;
+    const fx = Math.max(0, Math.min(1, (this.camera.target.x + 1000) / 2000));
+    const fy = Math.max(0, Math.min(1, (1000 - this.camera.target.z) / 2000));
+    
+    const distSq = (fx - physics.focusX) * (fx - physics.focusX) + (fy - physics.focusY) * (fy - physics.focusY);
+    
+    if (isZoomed !== physics.zoomedIn || distSq > 0.002) {
+      physics.sendSettings({
+        zoomed_in: isZoomed,
+        focus_x: fx,
+        focus_y: fy
+      });
+    }
   }
   
   drawLandmarks(landmarks, selectedId, visible, physics) {
