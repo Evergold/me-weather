@@ -103,6 +103,9 @@ DECOUPLE_HYDROLOGY=False
 
 # Heights (cell) Installation Path
 HEIGHTS_PATH="assets"
+
+# GPU VRAM hint in GB (defaults to 8, used to prevent WebGPU OutOfMemory crashes on large maps)
+GPU_VRAM_GB=8
 ```
 
 ### 🗂️ Tiled Map Import (Gaea / World Machine / Terraform)
