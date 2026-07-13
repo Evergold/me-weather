@@ -178,7 +178,7 @@ export class WeatherTerrain {
       `${apiProtocol}//${apiHost}/assets/heightmap_coarse.png`,
       this.scene,
       true,
-      false,
+      true, // invertY to match standard ground UV mapping
       BABYLON.Texture.LINEAR_LINEAR
     );
     this.heightmapTexPrev = this.heightmapTex;
@@ -190,7 +190,7 @@ export class WeatherTerrain {
       `${apiProtocol}//${apiHost}/assets/normalmap_coarse.jpg`,
       this.scene,
       true,
-      false,
+      true, // invertY to match standard ground UV mapping
       BABYLON.Texture.LINEAR_LINEAR
     );
     this.material.setTexture("tNormal", this.normalmapTex);
@@ -247,7 +247,7 @@ export class WeatherTerrain {
       BABYLON.Engine.TEXTUREFORMAT_RGBA,
       this.scene,
       false,
-      false,
+      true, // invertY to match standard ground UV mapping
       BABYLON.Texture.NEAREST_SAMPLINGMODE,
       BABYLON.Engine.TEXTURETYPE_FLOAT
     );
