@@ -82,9 +82,9 @@ export class WeatherRenderer {
     this.camera = new BABYLON.ArcRotateCamera(
       "MainCamera",
       -Math.PI / 2,
-      Math.PI / 3,
+      Math.PI / 3.6,
       1200,
-      new BABYLON.Vector3(0, 100, 0),
+      new BABYLON.Vector3(0, 150, 0),
       this.scene
     );
     this.camera.lowerBetaLimit = 0.01;
@@ -358,7 +358,7 @@ export class WeatherRenderer {
       this.camera.alpha = -Math.PI / 2;
       this.camera.beta = 0.001; // directly overhead
       this.camera.radius = fitRadius;
-      this.camera.setTarget(new BABYLON.Vector3(0, 100, 0));
+      this.camera.setTarget(new BABYLON.Vector3(0, 150, 0));
       
       // Lock rotation limits to prevent user from dragging to rotate in 2D view
       this.camera.lowerAlphaLimit = -Math.PI / 2;
@@ -373,9 +373,9 @@ export class WeatherRenderer {
       this.camera.upperBetaLimit = Math.PI / 2.1;
       
       this.camera.alpha = -Math.PI / 2;
-      this.camera.beta = Math.PI / 3;
+      this.camera.beta = Math.PI / 3.6;
       this.camera.radius = 1200;
-      this.camera.setTarget(new BABYLON.Vector3(0, 100, 0));
+      this.camera.setTarget(new BABYLON.Vector3(0, 150, 0));
     }
   }
   
