@@ -99,7 +99,6 @@ export class WeatherRenderer {
     this.particles = new WeatherParticles(this.scene);
     
     this.acoustics = new WeatherAcoustics();
-    this.acoustics.init();
     
     // Load heightmaps
     this.terrain.loadCoarseTextures();
