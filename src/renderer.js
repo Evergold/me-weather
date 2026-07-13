@@ -428,17 +428,23 @@ export class WeatherRenderer {
         pointers.panningMouseButton = 2; // Default to Right-click panning
       }
       
-      // Dynamically toggle panning mouse button on pointerdown during the DOM Capture phase.
+      // Dynamically toggle panning properties on pointerdown during the DOM Capture phase.
       // This guarantees our handler runs before BabylonJS event listeners (bubble phase),
-      // ensuring panningMouseButton is updated before BabylonJS reads it for the current drag.
+      // ensuring panning properties are updated before BabylonJS reads them for the current drag.
       if (!this._pointerListener) {
         this._pointerListener = (event) => {
           const activePointers = this.camera.inputs && this.camera.inputs.attached && (this.camera.inputs.attached.pointers || this.camera.inputs.attached.mouse);
           if (activePointers) {
             if (event.ctrlKey) {
-              activePointers.panningMouseButton = 0; // Left-click pans when Ctrl is held
+              // Left-click (0) pans directly without waiting for Ctrl key checks in normalized events
+              activePointers.panningMouseButton = 0;
+              activePointers.useCtrlForPanning = false;
+              this.camera.useCtrlForPanning = false;
             } else {
-              activePointers.panningMouseButton = 2; // Right-click pans, Left-click rotates
+              // Right-click (2) pans, Left-click (0) rotates (requires Ctrl for left-click panning)
+              activePointers.panningMouseButton = 2;
+              activePointers.useCtrlForPanning = true;
+              this.camera.useCtrlForPanning = true;
             }
           }
         };
