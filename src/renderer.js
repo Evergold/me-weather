@@ -163,7 +163,7 @@ export class WeatherRenderer {
     
     this.tickCount++;
     if (this.camera) {
-      console.log(`[Client Renderer] tick: ${this.tickCount} pos: ${this.camera.position.toString()} target: ${this.camera.target.toString()} radius: ${this.camera.radius}`);
+      console.log(`[Client Renderer] tick: ${this.tickCount} pos: ${this.camera.position.toString()} target: ${this.camera.target.toString()} radius: ${this.camera.radius} canvas: ${this.canvas.clientWidth}x${this.canvas.clientHeight} engine: ${this.engine.getRenderWidth()}x${this.engine.getRenderHeight()}`);
     }
     
     // Explicitly resize on the first few frames to match actual layout size
