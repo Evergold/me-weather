@@ -243,8 +243,8 @@ export class WeatherRenderer {
       
       const isSelected = lm.id === selectedId;
       
-      // Draw Cone pin
-      const cone = BABYLON.MeshBuilder.CreateCone(
+      // Draw Cone pin (a cylinder with top diameter 0)
+      const cone = BABYLON.MeshBuilder.CreateCylinder(
         "landmark_cone_" + lm.id,
         { height: 18, diameterTop: 0, diameterBottom: 10 },
         this.scene
