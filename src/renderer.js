@@ -216,7 +216,9 @@ export class WeatherRenderer {
     this.updateCameraTelemetry(physics);
     
     // 8. Render frame
+    this.engine.beginFrame();
     this.scene.render();
+    this.engine.endFrame();
   }
   
   updateCameraTelemetry(physics) {
