@@ -91,8 +91,7 @@ export class WeatherRenderer {
     
     // 4. Setup Lights & Adaptive CSM
     this.initLights();
-    
-    // 5. Setup Sub-systems
+    this.scene.metadata = { shadowGenerator: this.shadowGenerator };
     this.terrain = new WeatherTerrain(this.scene);
     this.particles = new WeatherParticles(this.scene);
     
@@ -203,7 +202,7 @@ export class WeatherRenderer {
     }
     
     // 3. Update active tiles based on camera position and zoom
-    this.terrain.updateTiles(this.camera);
+    this.terrain.updateTiles(this.camera, physics);
 
     const layerMap = {
       'terrain': 0,

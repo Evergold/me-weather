@@ -6,7 +6,7 @@ import * as BABYLON from '@babylonjs/core';
 export class WeatherTerrain {
   constructor(scene) {
     this.scene = scene;
-    this.activeTiles = new Map(); // Key: "z_x_y" -> Value: { mesh, material, heightTex, normalTex, flowTex, loaded }
+    this.activeTiles = new Map(); // Key: "z_x_y" -> Value: { mesh, material, heightTex, normalTex, flowTex, sps, spsMesh, loaded }
     
     this.terrainWidth = 256;
     this.terrainHeight = 256;
@@ -32,6 +32,7 @@ export class WeatherTerrain {
     
     this.initShaders();
     this.initWeatherTexture();
+    this.initTreeTemplate();
   }
   
   initShaders() {
@@ -223,8 +224,37 @@ export class WeatherTerrain {
       BABYLON.Engine.TEXTURETYPE_FLOAT
     );
   }
+
+  initTreeTemplate() {
+    // Procedural Low-poly Pine Tree Template
+    const trunk = BABYLON.MeshBuilder.CreateCylinder("trunk", { height: 1.0, diameterTop: 0.15, diameterBottom: 0.25, tessellation: 4 }, this.scene);
+    trunk.position.y = 0.5;
+    
+    const trunkColors = [];
+    for (let i = 0; i < trunk.getTotalVertices(); i++) {
+      trunkColors.push(0.38, 0.26, 0.16, 1.0); // Brown
+    }
+    trunk.setVerticesData(BABYLON.VertexBuffer.ColorKind, trunkColors);
+
+    const foliage = BABYLON.MeshBuilder.CreateCylinder("foliage", { height: 2.2, diameterTop: 0.0, diameterBottom: 1.2, tessellation: 5 }, this.scene);
+    foliage.position.y = 2.1;
+    
+    const foliageColors = [];
+    for (let i = 0; i < foliage.getTotalVertices(); i++) {
+      foliageColors.push(0.22, 0.48, 0.12, 1.0); // Forest Green
+    }
+    foliage.setVerticesData(BABYLON.VertexBuffer.ColorKind, foliageColors);
+
+    this.treeTemplate = BABYLON.Mesh.MergeMeshes([trunk, foliage], true, true, undefined, false, true);
+    this.treeTemplate.setEnabled(false);
+    
+    const treeMat = new BABYLON.StandardMaterial("treeMat", this.scene);
+    treeMat.useVertexColors = true;
+    treeMat.roughness = 0.85;
+    this.treeTemplate.material = treeMat;
+  }
   
-  updateTiles(camera) {
+  updateTiles(camera, physics) {
     if (!camera) return;
     
     // Choose quadtree zoom level based on camera altitude (radius)
@@ -278,7 +308,7 @@ export class WeatherTerrain {
         const parts = key.split("_");
         const tx = parseInt(parts[1]);
         const ty = parseInt(parts[2]);
-        this.createTile(z, tx, ty, tileSize, apiProtocol, apiHost);
+        this.createTile(z, tx, ty, tileSize, apiProtocol, apiHost, physics);
       }
       
       const tile = this.activeTiles.get(key);
@@ -294,6 +324,9 @@ export class WeatherTerrain {
         const tile = this.activeTiles.get(key);
         if (tile && tile.mesh) {
           tile.mesh.setEnabled(true);
+          if (tile.spsMesh) {
+            tile.spsMesh.setEnabled(true);
+          }
         }
       }
       
@@ -308,6 +341,13 @@ export class WeatherTerrain {
           if (tile.heightTex) tile.heightTex.dispose();
           if (tile.normalTex) tile.normalTex.dispose();
           if (tile.flowTex) tile.flowTex.dispose();
+          if (tile.sps) tile.sps.dispose();
+          if (tile.spsMesh) {
+            if (this.scene.metadata && this.scene.metadata.shadowGenerator) {
+              this.scene.metadata.shadowGenerator.removeShadowCaster(tile.spsMesh);
+            }
+            tile.spsMesh.dispose();
+          }
           this.activeTiles.delete(key);
         }
       }
@@ -316,7 +356,7 @@ export class WeatherTerrain {
     }
   }
   
-  createTile(z, x, y, tileSize, apiProtocol, apiHost) {
+  createTile(z, x, y, tileSize, apiProtocol, apiHost, physics) {
     const key = `${z}_${x}_${y}`;
     
     // Configure subdivision grid dynamically
@@ -389,6 +429,8 @@ export class WeatherTerrain {
       heightTex: null,
       normalTex: null,
       flowTex: null,
+      sps: null,
+      spsMesh: null,
       loaded: false
     };
     
@@ -399,6 +441,11 @@ export class WeatherTerrain {
         tileObj.loaded = true;
         if (z === this.currentZoom) {
           mesh.setEnabled(true);
+        }
+        
+        // Dynamically instantiate instanced forest vegetation via SPS close up (Z >= 2)
+        if (z >= 2) {
+          this.buildVegetationSPS(tileObj, z, posX, posZ, tileSize, physics);
         }
       }
     };
@@ -455,6 +502,84 @@ export class WeatherTerrain {
     
     this.activeTiles.set(key, tileObj);
   }
+
+  buildVegetationSPS(tileObj, z, posX, posZ, tileSize, physics) {
+    const sps = new BABYLON.SolidParticleSystem(`sps_${posX}_${posZ}`, this.scene, { updatable: true });
+    // Spawn more trees for closer zoom level
+    const numTrees = z === 2 ? 80 : 200;
+    sps.addShape(this.treeTemplate, numTrees);
+    const spsMesh = sps.buildMesh();
+    spsMesh.material = this.treeTemplate.material;
+    
+    // Enable shadows for trees
+    spsMesh.receiveShadows = true;
+    if (this.scene.metadata && this.scene.metadata.shadowGenerator) {
+      this.scene.metadata.shadowGenerator.addShadowCaster(spsMesh);
+    }
+    
+    sps.initParticles = () => {
+      for (let p = 0; p < sps.nbParticles; p++) {
+        const particle = sps.particles[p];
+        
+        // Random placement inside local tile coordinates
+        const localX = (Math.random() - 0.5) * tileSize;
+        const localZ = (Math.random() - 0.5) * tileSize;
+        
+        const worldX = posX + localX;
+        const worldZ = posZ + localZ;
+        
+        // Map world coordinates to physics grid indices
+        const gridX = Math.floor((worldX + 1000.0) / 2000.0 * 256);
+        const gridY = Math.floor((1000.0 - worldZ) / 2000.0 * 256);
+        const idx = Math.max(0, Math.min(256 * 256 - 1, gridY * 256 + gridX));
+        
+        const heightVal = physics ? physics.heightmap[idx] : 0.0;
+        const moistVal = physics ? physics.moisture[idx] : 0.5;
+        const isWater = physics ? physics.isWater[idx] : 0;
+        
+        // Pinewood growth conditions: above sea level, not too high/rocky, and sufficiently moist
+        const isForestZone = (heightVal > 0.08) && (heightVal < 0.45) && (moistVal > 0.28) && (isWater !== 1);
+        
+        if (isForestZone) {
+          particle.position.set(localX, heightVal * this.uniforms.uScale - 0.15, localZ);
+          
+          // Add organic scale and rotation variations
+          const scale = 0.55 + Math.random() * 0.9;
+          particle.scale.set(scale, scale, scale);
+          particle.rotation.y = Math.random() * Math.PI * 2;
+          particle.rotation.x = (Math.random() - 0.5) * 0.08;
+          particle.rotation.z = (Math.random() - 0.5) * 0.08;
+          
+          // Season color blending
+          const seasonInt = this.uniforms.uSeason;
+          let color = new BABYLON.Color4(0.22, 0.48, 0.12, 1.0); // green
+          
+          if (seasonInt === 0) {
+            color = new BABYLON.Color4(0.28, 0.55, 0.15, 1.0); // Spring: bright green
+          } else if (seasonInt === 2) {
+            // Autumn gold/red
+            color = new BABYLON.Color4(0.55 + Math.random() * 0.15, 0.35 + Math.random() * 0.1, 0.08, 1.0);
+          } else if (seasonInt === 3) {
+            // Winter bare/frost
+            color = new BABYLON.Color4(0.48, 0.46, 0.45, 1.0);
+          }
+          particle.color = color;
+        } else {
+          // Hide particle below terrain
+          particle.position.y = -9999;
+        }
+      }
+    };
+    
+    sps.initParticles();
+    sps.setParticles();
+    
+    // Hide mesh initially if tile is not enabled
+    spsMesh.setEnabled(tileObj.mesh.isEnabled());
+    
+    tileObj.sps = sps;
+    tileObj.spsMesh = spsMesh;
+  }
   
   updateUniforms(activeLayer, timeOfDay, lightDir, lightColor, isZoomed, focusX, focusY, season, time) {
     this.uniforms.activeLayer = activeLayer;
@@ -470,6 +595,9 @@ export class WeatherTerrain {
       'winter': 3
     };
     const seasonInt = seasonMap[season] ?? 1;
+    
+    // Check if season changed to trigger SPS redraw
+    const seasonChanged = this.uniforms.uSeason !== seasonInt;
     this.uniforms.uSeason = seasonInt;
     
     // Calculate regional weather texture viewport boundaries
@@ -495,6 +623,12 @@ export class WeatherTerrain {
         tile.material.setFloat("uWeatherScale", this.uniforms.uWeatherScale);
         tile.material.setInt("uSeason", seasonInt);
         tile.material.setFloat("uTime", time);
+      }
+      
+      // Update instanced tree colors when the season changes
+      if (seasonChanged && tile.sps && tile.sps.particles) {
+        tile.sps.initParticles();
+        tile.sps.setParticles();
       }
     }
   }
