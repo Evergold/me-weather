@@ -88,7 +88,8 @@ export class WeatherRenderer {
     this.camera.lowerBetaLimit = 0.01;
     this.camera.upperBetaLimit = Math.PI / 2.1; // Prevent going below ground
     this.camera.lowerRadiusLimit = 20;
-    this.camera.upperRadiusLimit = 3000;
+    this.camera.upperRadiusLimit = 4000;
+    this.camera.wheelDeltaPercentage = 0.015; // Logarithmic-style scroll speed proportional to radius
     
     // 4. Setup Lights & Adaptive CSM
     this.initLights();
@@ -290,12 +291,29 @@ export class WeatherRenderer {
     if (!this.camera) return;
     
     if (enable) {
+      // Calculate radius to fit the 2000x2000 map plane perfectly on screen
+      const fov = this.camera.fov; // vertical fov in radians
+      const aspect = this.engine.getAspectRatio(this.camera) || (window.innerWidth / window.innerHeight);
+      const fitRadius = Math.max(1000 / Math.tan(fov / 2), 1000 / (Math.tan(fov / 2) * aspect));
+      
       // Top down camera locks rotation
       this.camera.alpha = -Math.PI / 2;
-      this.camera.beta = 0.01; // directly overhead
-      this.camera.radius = 1600;
+      this.camera.beta = 0.001; // directly overhead
+      this.camera.radius = fitRadius;
       this.camera.target.set(0, 0, 0);
+      
+      // Lock rotation limits to prevent user from dragging to rotate in 2D view
+      this.camera.lowerAlphaLimit = -Math.PI / 2;
+      this.camera.upperAlphaLimit = -Math.PI / 2;
+      this.camera.lowerBetaLimit = 0.001;
+      this.camera.upperBetaLimit = 0.001;
     } else {
+      // Restore rotation limits
+      this.camera.lowerAlphaLimit = null;
+      this.camera.upperAlphaLimit = null;
+      this.camera.lowerBetaLimit = 0.01;
+      this.camera.upperBetaLimit = Math.PI / 2.1;
+      
       this.camera.alpha = -Math.PI / 2;
       this.camera.beta = Math.PI / 3;
       this.camera.radius = 1200;
