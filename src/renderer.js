@@ -353,10 +353,10 @@ export class WeatherRenderer {
       const fitRadius = Math.max(1000 / Math.tan(fov / 2), 1000 / (Math.tan(fov / 2) * aspect));
       
       // Top down camera locks rotation
+      this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
       this.camera.alpha = -Math.PI / 2;
       this.camera.beta = 0.001; // directly overhead
       this.camera.radius = fitRadius;
-      this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
       
       // Lock rotation limits to prevent user from dragging to rotate in 2D view
       this.camera.lowerAlphaLimit = -Math.PI / 2;
@@ -370,8 +370,10 @@ export class WeatherRenderer {
       this.camera.lowerBetaLimit = 0.01;
       this.camera.upperBetaLimit = Math.PI / 2.1;
       
-      this.camera.position.set(0, 800, -1000);
       this.camera.setTarget(new BABYLON.Vector3(0, 150, 0));
+      this.camera.alpha = -Math.PI / 2;
+      this.camera.beta = Math.PI / 3.6;
+      this.camera.radius = 1200;
     }
   }
   
