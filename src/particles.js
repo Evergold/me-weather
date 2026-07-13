@@ -15,8 +15,22 @@ export class WeatherParticles {
     this.initClouds();
   }
   
+  createParticleSystem(name, capacity) {
+    const isWebGPU = this.scene.getEngine().isWebGPU;
+    if (isWebGPU) {
+      try {
+        console.log(`[Particles] Creating GPUParticleSystem for ${name} (capacity: ${capacity})`);
+        return new BABYLON.GPUParticleSystem(name, { capacity: capacity }, this.scene);
+      } catch (e) {
+        console.warn(`[Particles] Failed to create GPUParticleSystem for ${name}, falling back to CPU ParticleSystem:`, e);
+      }
+    }
+    console.log(`[Particles] Creating CPU ParticleSystem for ${name} (capacity: ${capacity})`);
+    return new BABYLON.ParticleSystem(name, capacity, this.scene);
+  }
+
   initRain() {
-    this.rainSystem = new BABYLON.ParticleSystem("rain", 4000, this.scene);
+    this.rainSystem = this.createParticleSystem("rain", 4000);
     this.rainSystem.particleTexture = new BABYLON.Texture("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", this.scene);
     this.rainSystem.emitter = new BABYLON.Vector3(0, 400, 0);
     this.rainSystem.minEmitBox = new BABYLON.Vector3(-1000, 0, -1000);
@@ -42,7 +56,7 @@ export class WeatherParticles {
   }
   
   initSnow() {
-    this.snowSystem = new BABYLON.ParticleSystem("snow", 4000, this.scene);
+    this.snowSystem = this.createParticleSystem("snow", 4000);
     this.snowSystem.particleTexture = new BABYLON.Texture("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", this.scene);
     this.snowSystem.emitter = new BABYLON.Vector3(0, 400, 0);
     this.snowSystem.minEmitBox = new BABYLON.Vector3(-1000, 0, -1000);
@@ -68,7 +82,7 @@ export class WeatherParticles {
   }
   
   initClouds() {
-    this.cloudSystem = new BABYLON.ParticleSystem("clouds", 6000, this.scene);
+    this.cloudSystem = this.createParticleSystem("clouds", 6000);
     this.cloudSystem.particleTexture = new BABYLON.Texture("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", this.scene);
     this.cloudSystem.emitter = new BABYLON.Vector3(0, 200, 0);
     this.cloudSystem.minEmitBox = new BABYLON.Vector3(-1000, -20, -1000);
