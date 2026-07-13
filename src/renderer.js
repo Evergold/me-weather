@@ -428,11 +428,12 @@ export class WeatherRenderer {
         pointers.panningMouseButton = 2; // Default to Right-click panning
       }
       
-      // Dynamically toggle panning properties on pointerdown during the DOM Capture phase.
-      // This guarantees our handler runs before BabylonJS event listeners (bubble phase),
+      // Dynamically toggle panning properties on pointerdown during the window Capture phase.
+      // This guarantees our handler runs before any event listeners on the canvas (including BabylonJS),
       // ensuring panning properties are updated before BabylonJS reads them for the current drag.
       if (!this._pointerListener) {
         this._pointerListener = (event) => {
+          if (event.target !== this.canvas) return;
           const activePointers = this.camera.inputs && this.camera.inputs.attached && (this.camera.inputs.attached.pointers || this.camera.inputs.attached.mouse);
           if (activePointers) {
             if (event.ctrlKey) {
@@ -448,17 +449,18 @@ export class WeatherRenderer {
             }
           }
         };
-        this.canvas.addEventListener('pointerdown', this._pointerListener, true); // useCapture = true
+        window.addEventListener('pointerdown', this._pointerListener, true); // Intercept at window capture level!
       }
 
       if (!this._pointerMoveListener) {
         this._pointerMoveListener = (event) => {
+          if (event.target !== this.canvas) return;
           if (event.ctrlKey) {
             const activePointers = this.camera.inputs && this.camera.inputs.attached && (this.camera.inputs.attached.pointers || this.camera.inputs.attached.mouse);
             console.log(`[Client Debug] pointermove with Ctrl. Target: ${this.camera.target.toString()} panningMouseButton: ${activePointers?.panningMouseButton} useCtrlForPanning: ${activePointers?.useCtrlForPanning}`);
           }
         };
-        this.canvas.addEventListener('pointermove', this._pointerMoveListener, true);
+        window.addEventListener('pointermove', this._pointerMoveListener, true);
       }
       
       console.log(`[Client Renderer] attachCameraControls: Target after attach: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
