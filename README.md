@@ -117,8 +117,8 @@ Brave's default shields and fingerprinting protections block GPU adapter access.
 3.  **Enable WebGPU**: Search for `#enable-unsafe-webgpu` in `brave://flags` and set it to **Enabled**.
 4.  Relaunch Brave.
 
-### 🦊 Firefox Nightly & Developer Edition
-Firefox Nightly has the most up-to-date WGSL compiler (`naga`) and Vulkan integration. WebGPU is optimistically enabled by default on Firefox Nightly.
+### 🦊 Firefox (Nightly, Developer Edition, & Release)
+WebGPU is disabled by default on Firefox Release for Linux to protect against graphics driver hangs, but it is fully supported when activated:
 1.  Navigate to `about:config`.
 2.  Set **`dom.webgpu.enabled`** to `true`.
 3.  Set **`gfx.webgpu.force-enabled`** to `true`.
@@ -126,10 +126,5 @@ Firefox Nightly has the most up-to-date WGSL compiler (`naga`) and Vulkan integr
 5.  *(Optional)* Go to `about:support` and verify that **Compositing** is running on hardware-accelerated **`WebRender`**. If it displays *Software*, set **`gfx.webrender.all`** to `true` in `about:config` to force hardware acceleration.
 
 > [!NOTE]
-> **Firefox Nightly WebGPU Validation Warnings:**
+> **Firefox WebGPU Validation Warnings:**
 > You may see validation warnings in the console during startup (e.g., `Shader module creation failed: Shader validation error` for `CopyVideoToTexture`). These are harmless browser-level compilation errors originating from Firefox's ongoing `wgpu`/`naga` integration. Because our application does not use video textures, these shaders are never executed, and they have zero impact on rendering stability or performance.
-
-### 🦊 Firefox (Standard Release Channel)
-To protect Linux users from graphics driver hangs, WebGPU is disabled by default on Firefox Release for Linux.
-*   To force-test it, set the flags under the Firefox Nightly section, then visit the application with the override parameter:
-    👉 **`http://localhost:5173/?force-webgpu=1`** (or `http://localhost:8000/?force-webgpu=1`)
