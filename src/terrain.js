@@ -120,6 +120,18 @@ export class WeatherTerrain {
         vec2 flowDir = normalize(flowData.rg * 2.0 - 1.0 + 1e-5);
         float flowStrength = flowData.b;
         
+        // Flow speed scales with river width
+        float speedMultiplier = max(0.2, flowStrength * 1.5);
+        float progress1 = fract(uTime * 0.08 * speedMultiplier);
+        float progress2 = fract(uTime * 0.08 * speedMultiplier + 0.5);
+        
+        vec2 uvOffset1 = flowDir * progress1 * 0.08;
+        vec2 uvOffset2 = flowDir * progress2 * 0.08;
+        
+        // Sample normal maps at top-level (uniform control flow) to satisfy WebGPU/WGSL requirements
+        vec3 n1 = texture2D(tNormal, vUv - uvOffset1).rgb * 2.0 - 1.0;
+        vec3 n2 = texture2D(tNormal, vUv - uvOffset2).rgb * 2.0 - 1.0;
+
         // Rivers are carved where flow accumulation is high (Blue channel > 0.15)
         bool isWaterBody = false;
         if (vHeight < 0.08) {
@@ -133,18 +145,6 @@ export class WeatherTerrain {
         }
         
         if (isWaterBody) {
-          // Flow speed scales with river width
-          float speedMultiplier = max(0.2, flowStrength * 1.5);
-          float progress1 = fract(uTime * 0.08 * speedMultiplier);
-          float progress2 = fract(uTime * 0.08 * speedMultiplier + 0.5);
-          
-          vec2 uvOffset1 = flowDir * progress1 * 0.08;
-          vec2 uvOffset2 = flowDir * progress2 * 0.08;
-          
-          // Valve-style flowmap normal blending to prevent stretch artifacts
-          vec3 n1 = texture2D(tNormal, vUv - uvOffset1).rgb * 2.0 - 1.0;
-          vec3 n2 = texture2D(tNormal, vUv - uvOffset2).rgb * 2.0 - 1.0;
-          
           float blend = abs(0.5 - progress1) / 0.5;
           vec3 normalPerturb = normalize(mix(n1, n2, blend));
           normal = normalize(normal + normalPerturb * 0.35);
