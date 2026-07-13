@@ -87,7 +87,7 @@ export class WeatherRenderer {
       this.scene
     );
     this.camera.position.set(0, 800, -1000);
-    this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
+    this.camera.setTarget(new BABYLON.Vector3(0, 150, 0));
     this.camera.lowerBetaLimit = 0.01;
     this.camera.upperBetaLimit = Math.PI / 2.1; // Prevent going below ground
     this.camera.lowerRadiusLimit = 20;
@@ -163,9 +163,6 @@ export class WeatherRenderer {
     }
     
     this.tickCount++;
-    if (this.camera) {
-      console.log(`[Client Renderer] tick: ${this.tickCount} pos: ${this.camera.position.toString()} target: ${this.camera.target.toString()} radius: ${this.camera.radius} canvas: ${this.canvas.clientWidth}x${this.canvas.clientHeight} engine: ${this.engine.getRenderWidth()}x${this.engine.getRenderHeight()}`);
-    }
     
     // Explicitly resize on the first few frames to match actual layout size
     if (this.tickCount <= 5) {
@@ -374,7 +371,7 @@ export class WeatherRenderer {
       this.camera.upperBetaLimit = Math.PI / 2.1;
       
       this.camera.position.set(0, 800, -1000);
-      this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
+      this.camera.setTarget(new BABYLON.Vector3(0, 150, 0));
     }
   }
   
