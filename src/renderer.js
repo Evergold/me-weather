@@ -419,24 +419,8 @@ export class WeatherRenderer {
     if (this.camera && this.canvas) {
       console.log(`[Client Renderer] attachCameraControls: Target before attach: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
       
-      // Legacy Overload signature mapping: attachControl(element, noPreventDefault, useCtrlForPanning, panningMouseButton)
-      // Binding panning explicitly to Ctrl + Left Mouse Button (button 0)
-      this.camera.attachControl(this.canvas, true, true, 0);
-      
-      // Fallbacks to guarantee pointers input handles it correctly
-      this.camera.useCtrlForPanning = true;
-      this.camera._panningMouseButton = 0;
-      
-      const pointers = this.camera.inputs && this.camera.inputs.attached && (this.camera.inputs.attached.pointers || this.camera.inputs.attached.mouse);
-      console.log("[Client Renderer] Attached inputs keys:", Object.keys(this.camera.inputs.attached));
-      
-      if (pointers) {
-        pointers.useCtrlForPanning = true;
-        pointers.panningMouseButton = 0;
-        console.log("[Client Renderer] Pointers input found. useCtrlForPanning:", pointers.useCtrlForPanning, "panningMouseButton:", pointers.panningMouseButton);
-      } else {
-        console.log("[Client Renderer] NO pointers input found!");
-      }
+      // Standard signature: Left-click drag to rotate, Ctrl + Left-click drag (or Right-click drag) to pan.
+      this.camera.attachControl(this.canvas, true);
       
       console.log(`[Client Renderer] attachCameraControls: Target after attach: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
     }
