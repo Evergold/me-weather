@@ -91,7 +91,7 @@ export class WeatherRenderer {
     this.camera.lowerRadiusLimit = 20;
     this.camera.upperRadiusLimit = 4000;
     this.camera.wheelDeltaPercentage = 0.015; // Logarithmic-style scroll speed proportional to radius
-    this.camera.panningSensibility = 1000; // 1-to-1 panning mapping relative to camera radius
+    this.camera.panningSensibility = 1.5; // Divisor scaled to make panning responsive and 1-to-1 with mouse movement
     
     // 4. Setup Lights & Adaptive CSM
     this.initLights();
@@ -426,6 +426,7 @@ export class WeatherRenderer {
       if (pointers) {
         pointers.useCtrlForPanning = true;
         pointers.panningMouseButton = 2; // Default to Right-click panning
+        pointers.panningSensibility = 1.5;
       }
       
       // Dynamically toggle panning properties on pointerdown during the window Capture phase.
@@ -441,26 +442,17 @@ export class WeatherRenderer {
               activePointers.panningMouseButton = 0;
               activePointers.useCtrlForPanning = false;
               this.camera.useCtrlForPanning = false;
+              activePointers.panningSensibility = 1.5;
             } else {
               // Right-click (2) pans, Left-click (0) rotates (requires Ctrl for left-click panning)
               activePointers.panningMouseButton = 2;
               activePointers.useCtrlForPanning = true;
               this.camera.useCtrlForPanning = true;
+              activePointers.panningSensibility = 1.5;
             }
           }
         };
         window.addEventListener('pointerdown', this._pointerListener, true); // Intercept at window capture level!
-      }
-
-      if (!this._pointerMoveListener) {
-        this._pointerMoveListener = (event) => {
-          if (event.target !== this.canvas) return;
-          if (event.ctrlKey) {
-            const activePointers = this.camera.inputs && this.camera.inputs.attached && (this.camera.inputs.attached.pointers || this.camera.inputs.attached.mouse);
-            console.log(`[Client Debug] pointermove with Ctrl. Target: ${this.camera.target.toString()} panningMouseButton: ${activePointers?.panningMouseButton} useCtrlForPanning: ${activePointers?.useCtrlForPanning}`);
-          }
-        };
-        window.addEventListener('pointermove', this._pointerMoveListener, true);
       }
       
       console.log(`[Client Renderer] attachCameraControls: Target after attach: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
