@@ -64,7 +64,8 @@ document.addEventListener('DOMContentLoaded', () => {
         ui.toggleLandmarks,
         updatedLandmarks,
         ui.selectedLandmarkId,
-        ui.timeOfDay
+        ui.timeOfDay,
+        ui.season
       );
     }
 

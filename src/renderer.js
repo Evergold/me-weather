@@ -143,10 +143,16 @@ export class WeatherRenderer {
     this.sunLight.shadowMaxZ = 4000;
   }
   
-  draw(physics, activeLayer, toggleWind, toggleWeather, toggleLandmarks, landmarks, selectedLandmarkId, timeOfDay) {
+  draw(physics, activeLayer, toggleWind, toggleWeather, toggleLandmarks, landmarks, selectedLandmarkId, timeOfDay, season) {
     if (!this.scene) return;
     
     this.tickCount++;
+    const simSpeed = physics.speed ?? 1.0;
+    if (simSpeed > 0) {
+      this.time = (this.time || 0.0) + 0.016 * simSpeed;
+    } else {
+      this.time = (this.time || 0.0) + 0.005;
+    }
 
     // 1. Calculate Sun Direction & Colors based on timeOfDay (minutes past midnight)
     const hour = timeOfDay / 60.0;
@@ -209,7 +215,7 @@ export class WeatherRenderer {
     const isZoomed = this.camera ? (this.camera.radius < 500) : false;
     const fx = this.camera ? Math.max(0, Math.min(1, (this.camera.target.x + 1000) / 2000)) : 0.5;
     const fy = this.camera ? Math.max(0, Math.min(1, (1000 - this.camera.target.z) / 2000)) : 0.5;
-    this.terrain.updateUniforms(layerInt, timeOfDay, lightDir, lightColor, isZoomed, fx, fy);
+    this.terrain.updateUniforms(layerInt, timeOfDay, lightDir, lightColor, isZoomed, fx, fy, season, this.time);
     
     // 4. Upload dynamic weather data textures
     this.terrain.updateWeatherTexture(physics);
