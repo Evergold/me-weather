@@ -196,6 +196,8 @@ export class WeatherTerrain {
       true, // invertY to match standard ground UV mapping
       BABYLON.Texture.LINEAR_LINEAR
     );
+    this.heightmapTex.wrapU = BABYLON.Texture.CLAMP_ADDRESSMODE;
+    this.heightmapTex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
     this.heightmapTexPrev = this.heightmapTex;
     
     this.material.setTexture("tHeight", this.heightmapTex);
@@ -208,6 +210,8 @@ export class WeatherTerrain {
       true, // invertY to match standard ground UV mapping
       BABYLON.Texture.LINEAR_LINEAR
     );
+    this.normalmapTex.wrapU = BABYLON.Texture.CLAMP_ADDRESSMODE;
+    this.normalmapTex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
     this.material.setTexture("tNormal", this.normalmapTex);
   }
   
