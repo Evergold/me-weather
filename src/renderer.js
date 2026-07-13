@@ -81,9 +81,9 @@ export class WeatherRenderer {
     this.camera = new BABYLON.ArcRotateCamera(
       "MainCamera",
       -Math.PI / 2,
-      Math.PI / 4.0,
-      1600,
-      new BABYLON.Vector3(0, 50, -100),
+      Math.PI / 3.6,
+      1900,
+      new BABYLON.Vector3(0, 0, 0),
       this.scene
     );
     this.camera.lowerBetaLimit = 0.01;
@@ -380,10 +380,10 @@ export class WeatherRenderer {
       this.camera.lowerBetaLimit = 0.01;
       this.camera.upperBetaLimit = Math.PI / 2.1;
       
-      this.camera.setTarget(new BABYLON.Vector3(0, 50, -100));
+      this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
       this.camera.alpha = -Math.PI / 2;
-      this.camera.beta = Math.PI / 4.0;
-      this.camera.radius = 1600;
+      this.camera.beta = Math.PI / 3.6;
+      this.camera.radius = 1900;
       
       this.camera.update();
     }
@@ -404,10 +404,10 @@ export class WeatherRenderer {
     this.camera.inertialBetaOffset = 0;
     this.camera.inertialRadiusOffset = 0;
     
-    this.camera.setTarget(new BABYLON.Vector3(0, 50, -100));
+    this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
     this.camera.alpha = -Math.PI / 2;
-    this.camera.beta = Math.PI / 4.0;
-    this.camera.radius = 1600;
+    this.camera.beta = Math.PI / 3.6;
+    this.camera.radius = 1900;
     
     this.camera.update();
     this.camera.inertia = oldInertia;
@@ -419,13 +419,18 @@ export class WeatherRenderer {
     if (this.camera && this.canvas) {
       console.log(`[Client Renderer] attachCameraControls: Target before attach: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
       
-      // Explicitly bind panning to Ctrl + Left Mouse Button (0)
-      this.camera.attachControl(this.canvas, true, true, 0);
+      // Modern BabylonJS signature: attachControl(noPreventDefault, useCtrlForPanning, panningMouseButton)
+      // Binding panning explicitly to Ctrl + Left Mouse Button (button 0)
+      this.camera.attachControl(true, true, 0);
       
-      // Set properties directly on pointers input to guarantee correctness
-      if (this.camera.inputs && this.camera.inputs.attached && this.camera.inputs.attached.pointers) {
-        this.camera.inputs.attached.pointers.useCtrlForPanning = true;
-        this.camera.inputs.attached.pointers.panningMouseButton = 0;
+      // Fallbacks to guarantee pointers input handles it correctly
+      this.camera.useCtrlForPanning = true;
+      this.camera._panningMouseButton = 0;
+      
+      const pointers = this.camera.inputs && this.camera.inputs.attached && (this.camera.inputs.attached.pointers || this.camera.inputs.attached.mouse);
+      if (pointers) {
+        pointers.useCtrlForPanning = true;
+        pointers.panningMouseButton = 0;
       }
       
       console.log(`[Client Renderer] attachCameraControls: Target after attach: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
