@@ -381,6 +381,14 @@ export class WeatherRenderer {
     // Stub
   }
 
+  resetCameraToDefault() {
+    if (!this.camera) return;
+    this.camera.setTarget(new BABYLON.Vector3(0, 150, 0));
+    this.camera.alpha = -Math.PI / 2;
+    this.camera.beta = Math.PI / 3.6;
+    this.camera.radius = 1200;
+  }
+
   attachCameraControls() {
     if (this.camera && this.canvas) {
       this.camera.attachControl(this.canvas, true);
