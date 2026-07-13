@@ -236,7 +236,7 @@ export class WeatherTerrain {
     for (let i = 0; i < foliage.getTotalVertices(); i++) {
       foliageColors.push(0.22, 0.48, 0.12, 1.0); // Forest Green
     }
-    foliage.setVerticesData(BABYLON.VertexBuffer.ColorKind, foliageColors);
+    foliage.setVerticesData("color", foliageColors);
 
     this.treeTemplate = foliage;
     this.treeTemplate.setEnabled(false);
