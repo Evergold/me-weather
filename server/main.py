@@ -226,7 +226,10 @@ def generate_flowmap(heightmap_path, flowmap_path):
 # Pre-slicing terrain tiles on startup
 def pre_slice_map(img_path, map_type="height"):
     """Pre-slices the master image dynamically based on dimensions (level 0 up to 5 or 6)."""
-    if not IS_TILED_MODE:
+    # Force local non-tiled slicing for generated flowmaps
+    force_non_tiled = (map_type == "flow")
+    
+    if not IS_TILED_MODE or force_non_tiled:
         if not os.path.exists(img_path):
             print(f"[Tile Server] {map_type} map not found at {img_path}. Skipping pre-slicing.")
             return
@@ -263,7 +266,7 @@ def pre_slice_map(img_path, map_type="height"):
                 right = left + chunk_w
                 bottom = top + chunk_h
                 
-                if IS_TILED_MODE:
+                if IS_TILED_MODE and not force_non_tiled:
                     tile_img = get_chunk_from_tiled_source(left, top, right, bottom, tiled_source_dir, tiled_manifest, map_type)
                     if map_type == "height":
                         if tile_img.mode in ["F", "I;16", "I"]:
@@ -321,7 +324,10 @@ pre_slice_map(NORMALMAP_PATH, "normal")
 # Generate and slice hydrology flow map (Feature requirement for Phase 4 Flow Map Shader)
 FLOWMAP_PATH = os.path.join(ASSETS_DIR, "flowmap.png")
 if not os.path.exists(FLOWMAP_PATH):
-    generate_flowmap(COARSE_HEIGHTMAP_PATH, FLOWMAP_PATH)
+    if IS_TILED_MODE:
+        generate_flowmap(COARSE_HEIGHTMAP_PATH, FLOWMAP_PATH)
+    else:
+        generate_flowmap(HEIGHTMAP_PATH, FLOWMAP_PATH)
 pre_slice_map(FLOWMAP_PATH, "flow")
 
 # Load heightmap into physics solver
