@@ -41,16 +41,24 @@ export class WeatherRenderer {
     
     // 1. Initialise WebGPUEngine (WebGPU preferred, fallback to WebGL 2)
     const webgpuSupported = await BABYLON.WebGPUEngine.IsSupportedAsync;
+    let webgpuSuccess = false;
     
     if (webgpuSupported) {
-      console.log("[Client Renderer] WebGPU supported. Initializing WebGPUEngine...");
-      this.engine = new BABYLON.WebGPUEngine(this.canvas, {
-        ...options,
-        antialias: true
-      });
-      await this.engine.initAsync();
-    } else {
-      console.warn("[Client Renderer] WebGPU not supported. Falling back to WebGL 2...");
+      try {
+        console.log("[Client Renderer] WebGPU supported. Initializing WebGPUEngine...");
+        this.engine = new BABYLON.WebGPUEngine(this.canvas, {
+          ...options,
+          antialias: true
+        });
+        await this.engine.initAsync();
+        webgpuSuccess = true;
+      } catch (e) {
+        console.error("[Client Renderer] WebGPUEngine initialization failed. Falling back to WebGL 2:", e);
+      }
+    }
+    
+    if (!webgpuSuccess) {
+      console.warn("[Client Renderer] Using WebGL 2 Engine...");
       this.engine = new BABYLON.Engine(this.canvas, true, {
         ...options,
         powerPreference: "default"
