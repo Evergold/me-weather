@@ -121,7 +121,16 @@ export class WeatherTerrain {
         float flowStrength = flowData.b;
         
         // Rivers are carved where flow accumulation is high (Blue channel > 0.15)
-        bool isWaterBody = (vHeight < 0.08) || (activeLayer == 0 && flowStrength > 0.15 && vHeight < 0.22);
+        bool isWaterBody = false;
+        if (vHeight < 0.08) {
+          isWaterBody = true;
+        } else if (activeLayer == 0) {
+          if (flowStrength > 0.15) {
+            if (vHeight < 0.22) {
+              isWaterBody = true;
+            }
+          }
+        }
         
         if (isWaterBody) {
           // Flow speed scales with river width
@@ -159,7 +168,14 @@ export class WeatherTerrain {
 
         vec3 baseColor = vec3(0.3, 0.45, 0.2);
 
-        if (activeLayer == 0 || activeLayer == 2) {
+        bool isTerrainOrMoisture = false;
+        if (activeLayer == 0) {
+          isTerrainOrMoisture = true;
+        } else if (activeLayer == 2) {
+          isTerrainOrMoisture = true;
+        }
+        
+        if (isTerrainOrMoisture) {
           if (vHeight < 0.08) {
             baseColor = vec3(0.08, 0.18, 0.36); // Ocean
           } else if (isWaterBody) {
