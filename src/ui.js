@@ -127,7 +127,7 @@ export class WeatherUI {
           setTimeout(() => {
             this.renderer.resetCameraToDefault();
             this.renderer.attachCameraControls();
-          }, 250);
+          }, 750);
         }
         
         this.simSpeed = 1;
@@ -175,7 +175,7 @@ export class WeatherUI {
         setTimeout(() => {
           this.renderer.resetCameraToDefault();
           this.renderer.attachCameraControls();
-        }, 250);
+        }, 750);
       }
       this.simSpeed = 1;
       this.physics.sendSettings({ simSpeed: 1 });
@@ -196,7 +196,7 @@ export class WeatherUI {
         setTimeout(() => {
           this.renderer.resetCameraToDefault();
           this.renderer.attachCameraControls();
-        }, 250);
+        }, 750);
       }
       this.simSpeed = 1;
       this.physics.sendSettings({ simSpeed: 1 });
@@ -227,7 +227,7 @@ export class WeatherUI {
         setTimeout(() => {
           this.renderer.resetCameraToDefault();
           this.renderer.attachCameraControls();
-        }, 250);
+        }, 750);
       }
       this.simSpeed = 1;
       this.physics.sendSettings({ simSpeed: 1 });
