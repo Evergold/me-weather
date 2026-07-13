@@ -179,13 +179,15 @@ export class WeatherUI {
     });
 
     // 2. Dashboard Resets
-    this.btnResetMap.addEventListener('click', () => {
-      this.simSpeed = 0;
-      this.physics.sendSettings({ simSpeed: 0 });
-      this.dashboardScreen.classList.remove('active');
-      this.landingScreen.classList.add('active');
-      this.fileInput.value = '';
-    });
+    if (this.btnResetMap) {
+      this.btnResetMap.addEventListener('click', () => {
+        this.simSpeed = 0;
+        this.physics.sendSettings({ simSpeed: 0 });
+        this.dashboardScreen.classList.remove('active');
+        this.landingScreen.classList.add('active');
+        this.fileInput.value = '';
+      });
+    }
 
     // 3. Playback Speeds
     document.querySelectorAll('.speed-btn').forEach(btn => {
