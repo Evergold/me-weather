@@ -92,6 +92,9 @@ You can customize the simulation parameters by editing **`.env`**:
 HEIGHTMAP_FILENAME=heightmap.png
 NORMALMAP_FILENAME=normalmap.png
 
+# Optional: Directory name containing pre-tiled Gaea/World Machine exports (relative to server/assets/)
+TILED_IMPORT_DIR=gondor_16k_tiled
+
 # Pause physics loop when no clients are connected (True/False)
 PAUSE_ON_IDLE=True
 
@@ -101,6 +104,44 @@ DECOUPLE_HYDROLOGY=False
 # Heights (cell) Installation Path
 HEIGHTS_PATH="assets"
 ```
+
+### 🗂️ Tiled Map Import (Gaea / World Machine / Terraform)
+To support massive resolution maps (like 16k+) without triggering OutOfMemory errors in Python when loading giant master files, you can place pre-tiled terrain grids exported from external tools directly into the server assets.
+
+#### 1. Folder Structure:
+Create a directory under `server/assets/` (e.g. `server/assets/gondor_16k_tiled/`) structured as follows:
+```text
+server/assets/gondor_16k_tiled/
+├── manifest.json
+├── height/
+│   ├── tile_x0_y0.png
+│   ├── tile_x1_y0.png
+│   └── ...
+└── normal/
+    ├── tile_x0_y0.png
+    ├── tile_x1_y0.png
+    └── ...
+```
+
+#### 2. Manifest Schema (`manifest.json`):
+Place a `manifest.json` in the root of the tiled directory matching the following layout:
+```json
+{
+  "name": "gondor_16k_tiled",
+  "version": "1.0",
+  "totalResolution": 16384,
+  "tileSize": 4096,
+  "gridSize": 4,
+  "fileFormat": "png",
+  "tileNamingPattern": "tile_x{x}_y{y}.png"
+}
+```
+*   `totalResolution`: Total pixel width/height of the stitched terrain map.
+*   `tileSize`: Pixel width/height of individual source tiles (e.g., 4096).
+*   `gridSize`: Number of tiles on each axis (e.g., 4 to make a 4x4 grid of 16k total).
+*   `tileNamingPattern`: Filename naming pattern matching Gaea coordinate suffix naming.
+
+When active, the server dynamically crops and downsamples coarse maps on startup, and crawls/stitches intersections of the high-resolution source tiles on-the-fly to serve the client-side WebGPU tile request streams on-demand.
 
 ---
 

@@ -196,7 +196,19 @@ export class WeatherRenderer {
       this.lastSunAngle = currentAngle;
     }
     
-    // 3. Upload dynamic weather data textures
+    // 3. Update active tiles based on camera position and zoom
+    this.terrain.updateTiles(this.camera);
+
+    const layerMap = {
+      'terrain': 0,
+      'temperature': 1,
+      'moisture': 2,
+      'pressure': 3
+    };
+    const layerInt = layerMap[activeLayer] ?? 0;
+    this.terrain.updateUniforms(layerInt, timeOfDay, lightDir, lightColor);
+    
+    // 4. Upload dynamic weather data textures
     this.terrain.updateWeatherTexture(physics);
     
     // 4. Update weather particles
