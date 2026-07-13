@@ -417,7 +417,7 @@ export class WeatherRenderer {
   attachCameraControls() {
     if (this.camera && this.canvas) {
       console.log(`[Client Renderer] attachCameraControls: Target before attach: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
-      this.camera.attachControl(this.canvas, true);
+      this.camera.attachControl(this.canvas, true, true);
       console.log(`[Client Renderer] attachCameraControls: Target after attach: ${this.camera.target.toString()} Radius: ${this.camera.radius}`);
     }
   }
