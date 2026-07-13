@@ -168,6 +168,21 @@ export class WeatherTerrain {
     this.material.setColor3("uLightColor", new BABYLON.Color3(1.0, 1.0, 1.0));
 
     this.mesh.material = this.material;
+
+    // Initialize an empty weather texture to update in-place later (prevents WebGPU validation/destroyed texture errors)
+    const defaultData = new Float32Array(this.terrainWidth * this.terrainHeight * 4);
+    this.weatherTex = new BABYLON.RawTexture(
+      defaultData,
+      this.terrainWidth,
+      this.terrainHeight,
+      BABYLON.Engine.TEXTUREFORMAT_RGBA,
+      this.scene,
+      false,
+      false, // Set to false to avoid WebGL/WebGPU driver-side y-flip deprecations
+      BABYLON.Texture.NEAREST_SAMPLINGMODE,
+      BABYLON.Engine.TEXTURETYPE_FLOAT
+    );
+    this.material.setTexture("tWeather", this.weatherTex);
   }
   
   loadCoarseTextures() {
@@ -241,21 +256,7 @@ export class WeatherTerrain {
     }
     
     if (this.weatherTex) {
-      this.weatherTex.dispose();
+      this.weatherTex.update(data);
     }
-    
-    this.weatherTex = new BABYLON.RawTexture(
-      data,
-      this.terrainWidth,
-      this.terrainHeight,
-      BABYLON.Engine.TEXTUREFORMAT_RGBA,
-      this.scene,
-      false,
-      false, // Set to false to avoid WebGL y-flip deprecation warnings
-      BABYLON.Texture.NEAREST_SAMPLINGMODE,
-      BABYLON.Engine.TEXTURETYPE_FLOAT
-    );
-    
-    this.material.setTexture("tWeather", this.weatherTex);
   }
 }
