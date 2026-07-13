@@ -121,6 +121,11 @@ export class WeatherUI {
         }
         window.dispatchEvent(new Event('resize'));
         
+        // Attach camera controls now that layout is completely stable and canvas is visible
+        if (this.renderer) {
+          this.renderer.attachCameraControls();
+        }
+        
         this.simSpeed = 1;
         this.physics.sendSettings({ simSpeed: 1 });
         this.startSimulationLoop();
@@ -162,6 +167,9 @@ export class WeatherUI {
         this.renderer.engine.resize();
       }
       window.dispatchEvent(new Event('resize'));
+      if (this.renderer) {
+        this.renderer.attachCameraControls();
+      }
       this.simSpeed = 1;
       this.physics.sendSettings({ simSpeed: 1 });
       this.startSimulationLoop();
@@ -177,6 +185,9 @@ export class WeatherUI {
         this.renderer.engine.resize();
       }
       window.dispatchEvent(new Event('resize'));
+      if (this.renderer) {
+        this.renderer.attachCameraControls();
+      }
       this.simSpeed = 1;
       this.physics.sendSettings({ simSpeed: 1 });
       this.startSimulationLoop();
@@ -202,6 +213,9 @@ export class WeatherUI {
         this.renderer.engine.resize();
       }
       window.dispatchEvent(new Event('resize'));
+      if (this.renderer) {
+        this.renderer.attachCameraControls();
+      }
       this.simSpeed = 1;
       this.physics.sendSettings({ simSpeed: 1 });
       this.startSimulationLoop();
