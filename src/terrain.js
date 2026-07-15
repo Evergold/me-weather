@@ -72,7 +72,7 @@ export class WeatherTerrain {
         
         // GPU-based Geomorphing (lerps height from prev to target to prevent LOD pops)
         float hTarget = textureLod(tHeight, uv, 0.0).r;
-        float hPrev = textureLod(tHeightPrev, uv, 0.0).r;
+        float hPrev = textureLod(tHeightPrev, vUvGlobal, 0.0).r;
         float height = mix(hPrev, hTarget, uMorphProgress);
         vHeight = height;
         
@@ -364,6 +364,9 @@ export class WeatherTerrain {
       
       // 2. Wait for shaders to be fully compiled asynchronously before swapping
       Promise.all(compilationPromises).then(() => {
+        this.morphStartTime = performance.now();
+        this.uniforms.uMorphProgress = 0.0;
+        
         const keysToDelete = [];
         for (const [key, tile] of this.activeTiles.entries()) {
           const parts = key.split("_");
@@ -538,7 +541,11 @@ export class WeatherTerrain {
     flowTex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
     
     material.setTexture("tHeight", heightTex);
-    material.setTexture("tHeightPrev", heightTex);
+    if (this.coarseHeightTex) {
+      material.setTexture("tHeightPrev", this.coarseHeightTex);
+    } else {
+      material.setTexture("tHeightPrev", heightTex);
+    }
     material.setTexture("tNormal", normalTex);
     material.setTexture("tFlow", flowTex);
     
@@ -552,9 +559,35 @@ export class WeatherTerrain {
   }
 
   buildVegetationSPS(tileObj, z, posX, posZ, tileSize, physics) {
-    const sps = new BABYLON.SolidParticleSystem(`sps_${posX}_${posZ}`, this.scene, { updatable: true });
-    // Spawn more trees for closer zoom level
+    if (!physics) return;
+    
+    // Quick pass to check if there is any forest zone in this tile area to prevent empty SPS overhead
     const numTrees = z === 2 ? 80 : 200;
+    let forestZoneCount = 0;
+    const checkStep = tileSize / 8;
+    for (let dx = -tileSize / 2; dx <= tileSize / 2; dx += checkStep) {
+      for (let dz = -tileSize / 2; dz <= tileSize / 2; dz += checkStep) {
+        const worldX = posX + dx;
+        const worldZ = posZ + dz;
+        const gridX = Math.floor((worldX + 1000.0) / 2000.0 * 256);
+        const gridY = Math.floor((1000.0 - worldZ) / 2000.0 * 256);
+        const idx = Math.max(0, Math.min(256 * 256 - 1, gridY * 256 + gridX));
+        
+        const heightVal = physics.heightmap[idx];
+        const moistVal = physics.moisture[idx];
+        const isWater = physics.isWater[idx];
+        
+        if ((heightVal > 0.08) && (heightVal < 0.45) && (moistVal > 0.28) && (isWater !== 1)) {
+          forestZoneCount++;
+        }
+      }
+    }
+    
+    if (forestZoneCount === 0) {
+      return; // Skip SPS allocation entirely for sterile regions (ocean, sand, peaks)
+    }
+
+    const sps = new BABYLON.SolidParticleSystem(`sps_${posX}_${posZ}`, this.scene, { updatable: true });
     sps.addShape(this.treeTemplate, numTrees);
     const spsMesh = sps.buildMesh();
     spsMesh.material = this.treeTemplate.material;
@@ -636,6 +669,18 @@ export class WeatherTerrain {
     this.uniforms.uLightColor.copyFrom(lightColor);
     this.uniforms.uTime = time;
     
+    // Animate geomorph progress over 250ms (approx 15 frames)
+    const morphDuration = 250.0;
+    if (this.morphStartTime) {
+      const elapsed = performance.now() - this.morphStartTime;
+      this.uniforms.uMorphProgress = Math.min(1.0, elapsed / morphDuration);
+      if (this.uniforms.uMorphProgress >= 1.0) {
+        this.morphStartTime = null;
+      }
+    } else {
+      this.uniforms.uMorphProgress = 1.0;
+    }
+    
     const seasonMap = {
       'spring': 0,
       'summer': 1,
@@ -671,6 +716,7 @@ export class WeatherTerrain {
         tile.material.setFloat("uWeatherScale", this.uniforms.uWeatherScale);
         tile.material.setInt("uSeason", seasonInt);
         tile.material.setFloat("uTime", time);
+        tile.material.setFloat("uMorphProgress", this.uniforms.uMorphProgress);
       }
       
       // Update instanced tree colors when the season changes
@@ -701,6 +747,23 @@ export class WeatherTerrain {
     }
   }
   
-  // Stub for backwards-compatibility or manual switches
-  loadCoarseTextures() {}
+  // Load coarse heightmap texture for geomorphing background references
+  loadCoarseTextures() {
+    const apiHost = `${window.location.hostname}:8000`;
+    const apiProtocol = window.location.protocol;
+    const coarseUrl = `${apiProtocol}//${apiHost}/assets/heightmap_coarse.png`;
+    this.coarseHeightTex = new BABYLON.Texture(
+      coarseUrl,
+      this.scene,
+      true,
+      true, // invertY matches coordinates mapping
+      BABYLON.Texture.LINEAR_LINEAR,
+      () => {
+        console.log("[Terrain] Coarse heightmap texture loaded for geomorphing.");
+      },
+      (err) => console.warn(`Failed to load coarse heightmap: ${coarseUrl}`, err)
+    );
+    this.coarseHeightTex.wrapU = BABYLON.Texture.CLAMP_ADDRESSMODE;
+    this.coarseHeightTex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
+  }
 }

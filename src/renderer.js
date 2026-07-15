@@ -265,18 +265,26 @@ export class WeatherRenderer {
   updateCameraTelemetry(physics) {
     if (!this.camera) return;
     
+    const now = performance.now();
+    if (this.lastTelemetryTime && (now - this.lastTelemetryTime < 300)) {
+      return; // Rate-limit camera movement updates to once every 300ms
+    }
+    
     const isZoomed = this.camera.radius < 500;
     const fx = Math.max(0, Math.min(1, (this.camera.target.x + 1000) / 2000));
     const fy = Math.max(0, Math.min(1, (1000 - this.camera.target.z) / 2000));
     
     const distSq = (fx - physics.focusX) * (fx - physics.focusX) + (fy - physics.focusY) * (fy - physics.focusY);
     
-    if (isZoomed !== physics.zoomedIn || distSq > 0.002) {
+    // Send immediately if the zoom state toggles, otherwise throttle panning updates
+    const zoomChanged = isZoomed !== physics.zoomedIn;
+    if (zoomChanged || distSq > 0.002) {
       physics.sendSettings({
         zoomed_in: isZoomed,
         focus_x: fx,
         focus_y: fy
       });
+      this.lastTelemetryTime = now;
     }
   }
   
