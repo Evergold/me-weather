@@ -1,0 +1,43 @@
+# Global configuration block for highest performance TLS
+{
+    tls {
+        # Enable TLS 1.3 ONLY (eliminates slow legacy TLS 1.2 handshakes & ciphers)
+        protocols tls1.3
+        
+        # Use X25519 curve for key exchange (fastest key agreement, lowest CPU overhead)
+        curves x25519
+    }
+}
+
+# ==============================================================================
+# PRODUCTION DOMAIN TEMPLATE
+# ==============================================================================
+# To deploy this in production, copy the block below and replace
+# "localhost" with your actual registered domain name.
+# Caddy will automatically provision and renew Let's Encrypt certificates.
+#
+# Note on WebRTC:
+# WebRTC datachannel traffic flows directly over UDP between the client
+# and the server's UDP ports (configured in aiortc / firewalls). It does NOT
+# route through Caddy (port 443). Only the initial SDP signaling (JSON) is
+# proxied through Caddy via the secure WebSockets (/ws/control) defined below.
+
+localhost {
+    # Compress responses using modern compression algorithms
+    encode zstd gzip
+
+    # Serve Vite production assets directly
+    root * ./dist
+    file_server
+
+    # Reverse proxy WebSocket endpoints (WSS) to the FastAPI server
+    reverse_proxy /ws/* 127.0.0.1:8000 {
+        transport http {
+            keepalive 30s
+        }
+    }
+    
+    # Reverse proxy API endpoints (HTTPS)
+    reverse_proxy /tiles/* 127.0.0.1:8000
+    reverse_proxy /assets/* 127.0.0.1:8000
+}

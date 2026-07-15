@@ -26,10 +26,16 @@ export class WeatherPhysics {
     this.snow = new Float32Array(this.size);
     this.isWater = new Uint8Array(this.size);
 
-    // WebSocket state
+    // WebSocket & WebRTC state
     this.clientId = 'client-' + Math.random().toString(36).substring(2, 9);
-    this.ws = null;
+    this.controlWs = null;
+    this.streamWs = null;
     this.isConnected = false;
+    this.pc = null;
+    this.dataChannel = null;
+    this.playerPosition = { x: 0.0, y: 0.0, z: 0.0, rot: 0.0 };
+    this.otherPlayers = {};
+    this.playerSyncInterval = null;
 
     // Camera settings to push to server
     this.pushRate = '1000ms';
@@ -82,12 +88,27 @@ export class WeatherPhysics {
       this.isConnected = true;
       console.log("[WebSocket Control] Connection established.");
       this.sendSettings();
+      // Initialize WebRTC Data Channel connection
+      this.initWebRTC();
+    };
+    
+    this.controlWs.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "webrtc_answer") {
+          console.log("[WebRTC] Received SDP answer from server.");
+          this.handleWebRTCAnswer(msg.sdp);
+        }
+      } catch (e) {
+        // Not a WebRTC message or JSON parsing failed
+      }
     };
     
     this.controlWs.onclose = () => {
       this.isConnected = false;
       console.log("[WebSocket Control] Connection lost. Reconnecting in 3s...");
       this.closeStreamSocket();
+      this.closeWebRTC();
       setTimeout(() => this.initWebSocket(), 3000);
     };
     
@@ -127,6 +148,91 @@ export class WeatherPhysics {
       } catch (e) {}
       this.streamWs = null;
     }
+  }
+
+  initWebRTC() {
+    this.closeWebRTC();
+    console.log("[WebRTC] Initializing connection...");
+    
+    this.pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    });
+
+    this.dataChannel = this.pc.createDataChannel("player_telemetry", {
+      ordered: false,
+      maxRetransmits: 0
+    });
+
+    this.dataChannel.onopen = () => {
+      console.log("[WebRTC] Data channel established.");
+      this.startPlayerSyncLoop();
+    };
+
+    this.dataChannel.onclose = () => {
+      console.log("[WebRTC] Data channel closed.");
+      this.stopPlayerSyncLoop();
+    };
+
+    this.dataChannel.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "players") {
+          this.otherPlayers = msg.players;
+        }
+      } catch (e) {}
+    };
+
+    this.pc.createOffer()
+      .then(offer => this.pc.setLocalDescription(offer))
+      .then(() => {
+        if (this.controlWs && this.controlWs.readyState === WebSocket.OPEN) {
+          console.log("[WebRTC] Sending SDP offer to server.");
+          this.controlWs.send(JSON.stringify({
+            type: "webrtc_offer",
+            sdp: this.pc.localDescription.sdp
+          }));
+        }
+      })
+      .catch(err => console.error("[WebRTC] Error generating offer:", err));
+  }
+
+  handleWebRTCAnswer(sdp) {
+    if (!this.pc) return;
+    this.pc.setRemoteDescription(new RTCSessionDescription({
+      type: "answer",
+      sdp: sdp
+    })).then(() => {
+      console.log("[WebRTC] Remote description successfully set.");
+    }).catch(err => console.error("[WebRTC] Failed to set remote description:", err));
+  }
+
+  startPlayerSyncLoop() {
+    this.stopPlayerSyncLoop();
+    this.playerSyncInterval = setInterval(() => {
+      if (this.dataChannel && this.dataChannel.readyState === "open") {
+        this.dataChannel.send(JSON.stringify(this.playerPosition));
+      }
+    }, 1000 / 30); // 30 FPS
+  }
+
+  stopPlayerSyncLoop() {
+    if (this.playerSyncInterval) {
+      clearInterval(this.playerSyncInterval);
+      this.playerSyncInterval = null;
+    }
+  }
+
+  closeWebRTC() {
+    this.stopPlayerSyncLoop();
+    if (this.dataChannel) {
+      try { this.dataChannel.close(); } catch (e) {}
+      this.dataChannel = null;
+    }
+    if (this.pc) {
+      try { this.pc.close(); } catch (e) {}
+      this.pc = null;
+    }
+    this.otherPlayers = {};
   }
 
   unpackBinaryFrame(buffer) {

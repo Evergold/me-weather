@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from aiortc import RTCPeerConnection, RTCSessionDescription
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -431,6 +432,10 @@ async def simulation_loop():
         # Allow context switching and pace the ticks
         await asyncio.sleep(0.01)
 
+# WebRTC connections and player tracking globals
+pcs = {}
+active_players = {}
+
 # WebSocket connection manager for control and streaming channels
 class ConnectionManager:
     def __init__(self):
@@ -475,6 +480,13 @@ class ConnectionManager:
             self.clients[client_id]["control_socket"] = None
             if self.clients[client_id]["stream_socket"] is None:
                 self.cleanup_client(client_id)
+        # Close and clean up WebRTC PeerConnection
+        if client_id in pcs:
+            pc = pcs[client_id]
+            asyncio.create_task(pc.close())
+            del pcs[client_id]
+        if client_id in active_players:
+            del active_players[client_id]
 
     def disconnect_stream(self, client_id: str):
         if client_id in self.clients:
@@ -553,6 +565,54 @@ async def websocket_control_endpoint(websocket: WebSocket, client_id: str):
     try:
         while True:
             data = await websocket.receive_json()
+
+            if "type" in data and data["type"] == "webrtc_offer":
+                sdp = data["sdp"]
+                pc = RTCPeerConnection()
+                pcs[client_id] = pc
+
+                @pc.on("connectionstatechange")
+                async def on_connectionstatechange():
+                    if pc.connectionState in ["failed", "closed"]:
+                        if client_id in pcs:
+                            del pcs[client_id]
+                        if client_id in active_players:
+                            del active_players[client_id]
+
+                @pc.on("datachannel")
+                def on_datachannel(channel):
+                    @channel.on("message")
+                    def on_message(message):
+                        try:
+                            pos_data = json.loads(message)
+                            active_players[client_id] = {
+                                "x": pos_data.get("x", 0.0),
+                                "y": pos_data.get("y", 0.0),
+                                "z": pos_data.get("z", 0.0),
+                                "rot": pos_data.get("rot", 0.0)
+                            }
+                            other_players = {
+                                pid: pval for pid, pval in active_players.items() if pid != client_id
+                            }
+                            response = json.dumps({
+                                "type": "players",
+                                "players": other_players
+                            })
+                            channel.send(response)
+                        except Exception as e:
+                            print(f"[WebRTC DataChannel] Error: {e}")
+
+                offer = RTCSessionDescription(sdp=sdp, type="offer")
+                await pc.setRemoteDescription(offer)
+                answer = await pc.createAnswer()
+                await pc.setLocalDescription(answer)
+
+                await websocket.send_json({
+                    "type": "webrtc_answer",
+                    "sdp": pc.localDescription.sdp
+                })
+                continue
+
             global sim_time_of_day, sim_season, global_wind_speed, global_wind_angle, global_temp_shift, sim_speed
             async with state_lock:
                 if "timeOfDay" in data:
