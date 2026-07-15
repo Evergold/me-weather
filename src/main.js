@@ -15,14 +15,15 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // 1. Initialize core sub-systems
   const physics = new WeatherPhysics(256, 256);
-  const renderer = new WeatherRenderer(canvas);
+  const renderer = new WeatherRenderer(canvas, physics);
   let ui = null;
-
+  
   let lastTime = performance.now();
   let animationFrameId = null;
   let frameCount = 0;
-
+  
   // 2. Main Simulation Animation Loop
+  // ... rest of tick ...
   function tick(timestamp) {
     // Calculate delta time in seconds, cap to prevent giant jumps
     let dt = (timestamp - lastTime) / 1000.0;
