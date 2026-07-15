@@ -179,5 +179,21 @@ To enable and configure WebGPU in Firefox:
 5.  *(Optional)* Go to `about:support` and verify that **Compositing** displays hardware-accelerated **`WebRender`**. If it displays *Software*, set **`gfx.webrender.all`** to `true` in `about:config` to force hardware acceleration.
 
 > [!NOTE]
-> **Firefox WebGPU Validation Warnings:**
 > You may see validation warnings in the console during startup (e.g., `Shader module creation failed: Shader validation error` for `CopyVideoToTexture`). These are harmless browser-level compilation errors originating from Firefox's ongoing `wgpu`/`naga` integration. Because our application does not use video textures, these shaders are never executed, and they have zero impact on rendering stability or performance.
+
+---
+
+## 🔒 Production Deployment & TLS (Caddy)
+
+For a production-ready deployment, browsers require a secure origin (HTTPS/WSS) to enable advanced web features such as WebRTC Data Channels. To run this simulation in a secure production context with minimal overhead and complexity, we utilize **Caddy** as a TLS termination reverse proxy.
+
+### Why Caddy?
+*   **Automatic TLS**: Caddy automatically provisions and renews SSL certificates (via Let's Encrypt / ZeroSSL) with zero manual intervention or cron jobs.
+*   **High Performance**: Offloads encryption/decryption overhead from the Python event loop to Caddy's high-speed Go network layer, preserving 100% of our FastAPI backend's CPU power for WebGPU/physics simulation execution.
+*   **WebSocket Upgrades**: Natively handles connection upgrades for the multiplexed control and stream sockets.
+
+### Localhost vs. Production TLS
+*   **Production**: Caddy dynamically queries Let's Encrypt/ZeroSSL to provision and manage standard public SSL certificates.
+*   **Localhost Development**: Caddy automatically installs and trusts a local self-signed root certificate in your operating system's trust store. This allows you to test full production-identical HTTPS and WSS locally without needing public cert provisioning or domains.
+
+For the full architectural setup and optimized TLS 1.3 configurations, refer to the [WEBRTC_CADDY_SETUP.md](WEBRTC_CADDY_SETUP.md) guide.
