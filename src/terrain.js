@@ -129,9 +129,13 @@ export class WeatherTerrain {
         vec2 uvOffset1 = flowDir * progress1 * 0.08;
         vec2 uvOffset2 = flowDir * progress2 * 0.08;
         
+        // Glacial Shear: Extremely slow movement down the slope gradient
+        vec2 glacierOffset = flowDir * fract(uTime * 0.002) * 0.15;
+        
         // Sample normal maps at top-level (uniform control flow) to satisfy WebGPU/WGSL requirements
         vec3 n1 = textureLod(tNormal, vUv - uvOffset1, 0.0).rgb * 2.0 - 1.0;
         vec3 n2 = textureLod(tNormal, vUv - uvOffset2, 0.0).rgb * 2.0 - 1.0;
+        vec3 nGlacier = textureLod(tNormal, vUv - glacierOffset, 0.0).rgb * 2.0 - 1.0;
 
         // Rivers are carved where flow accumulation is high (Blue channel > 0.15)
         bool isWaterBody = false;
@@ -185,7 +189,16 @@ export class WeatherTerrain {
           } else if (vHeight < 0.12) {
             baseColor = vec3(0.85, 0.82, 0.65); // Sand
           } else if (vHeight > 0.6) {
-            baseColor = vec3(0.95, 0.95, 0.95); // Snow peaks
+            baseColor = vec3(0.92, 0.96, 0.98); // Glacial Ice / Snow peaks
+            
+            // Phase 5: Glacial Shearing Normal Map
+            // Blend the static terrain normal with the time-shifted shear normal
+            // Creates the visual illusion of dynamic glacial shear stress slipping down the mountains
+            float shearBlend = clamp((vHeight - 0.6) * 5.0, 0.0, 0.8);
+            normal = normalize(mix(normal, nGlacier, shearBlend));
+            // Enhance specular reflection on ice
+            diffuse = max(0.12, dot(normal, lightDir)) * 1.2;
+            
           } else if (vHeight > 0.45) {
             baseColor = vec3(0.45, 0.42, 0.38); // Rock
           } else {
