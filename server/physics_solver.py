@@ -178,26 +178,14 @@ class WeatherPhysics:
         @group(0) @binding(9) var<storage, read> is_water: array<u32>;
         @group(0) @binding(10) var<storage, read_write> moisture_temp: array<f32>;
 
-        @compute @workgroup_size(16, 16)
-        fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-            let col = id.x;
-            let row = id.y;
-            let w = params.width;
-            let h = params.height;
-            
-            if (col >= w || row >= h) {
-                return;
-            }
+        fn get_wind(col: u32, row: u32, w: u32, h: u32) -> vec2<f32> {
             let idx = row * w + col;
-            
-            // 1. Wind fields gradient
             var dpdx = 0.0;
             var dpdy = 0.0;
             
             if (col > 0u && col < w - 1u) {
                 dpdx = (pressure[idx + 1u] - pressure[idx - 1u]) / 2.0;
             }
-            
             if (row > 0u && row < h - 1u) {
                 dpdy = (pressure[idx + w] - pressure[idx - w]) / 2.0;
             }
@@ -214,15 +202,24 @@ class WeatherPhysics:
             vx += params.global_wind_vx;
             vy += params.global_wind_vy;
             
-            // Mountain Blocking
             var grad_x = 0.0;
             var grad_y = 0.0;
             
             if (col > 0u) {
-                grad_x = heightmap[idx] - heightmap[idx - 1u];
+                let diff_x = heightmap[idx] - heightmap[idx - 1u];
+                if (vx > 0.0) {
+                    grad_x = diff_x;
+                } else {
+                    grad_x = -diff_x;
+                }
             }
             if (row > 0u) {
-                grad_y = heightmap[idx] - heightmap[idx - w];
+                let diff_y = heightmap[idx] - heightmap[idx - w];
+                if (vy > 0.0) {
+                    grad_y = diff_y;
+                } else {
+                    grad_y = -diff_y;
+                }
             }
             
             if (grad_x > 0.0) {
@@ -232,6 +229,78 @@ class WeatherPhysics:
                 vy = vy * max(0.05, 1.0 - grad_y * 8.0);
             }
             
+            return vec2<f32>(vx, vy);
+        }
+
+        fn read_moisture(c: i32, r: i32, w: i32, h: i32) -> f32 {
+            let clamped_c = u32(clamp(c, 0, w - 1));
+            let clamped_r = u32(clamp(r, 0, h - 1));
+            return moisture[clamped_r * u32(w) + clamped_c];
+        }
+
+        fn cubic(p0: f32, p1: f32, p2: f32, p3: f32, t: f32) -> f32 {
+            return p1 + 0.5 * t * (p2 - p0 + t * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + t * (3.0 * p1 - p0 - 3.0 * p2 + p3)));
+        }
+
+        fn bicubic_moisture(px: f32, py: f32, w: i32, h: i32) -> f32 {
+            let x0 = i32(floor(px));
+            let y0 = i32(floor(py));
+            let fx = px - f32(x0);
+            let fy = py - f32(y0);
+            
+            let r0 = y0 - 1;
+            let r1 = y0;
+            let r2 = y0 + 1;
+            let r3 = y0 + 2;
+
+            let col0 = cubic(
+                read_moisture(x0 - 1, r0, w, h),
+                read_moisture(x0,     r0, w, h),
+                read_moisture(x0 + 1, r0, w, h),
+                read_moisture(x0 + 2, r0, w, h),
+                fx
+            );
+            let col1 = cubic(
+                read_moisture(x0 - 1, r1, w, h),
+                read_moisture(x0,     r1, w, h),
+                read_moisture(x0 + 1, r1, w, h),
+                read_moisture(x0 + 2, r1, w, h),
+                fx
+            );
+            let col2 = cubic(
+                read_moisture(x0 - 1, r2, w, h),
+                read_moisture(x0,     r2, w, h),
+                read_moisture(x0 + 1, r2, w, h),
+                read_moisture(x0 + 2, r2, w, h),
+                fx
+            );
+            let col3 = cubic(
+                read_moisture(x0 - 1, r3, w, h),
+                read_moisture(x0,     r3, w, h),
+                read_moisture(x0 + 1, r3, w, h),
+                read_moisture(x0 + 2, r3, w, h),
+                fx
+            );
+
+            return cubic(col0, col1, col2, col3, fy);
+        }
+
+        @compute @workgroup_size(16, 16)
+        fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+            let col = id.x;
+            let row = id.y;
+            let w = params.width;
+            let h = params.height;
+            
+            if (col >= w || row >= h) {
+                return;
+            }
+            let idx = row * w + col;
+            
+            // 1. Wind fields (Compute race-free via helper function)
+            let wind = get_wind(col, row, w, h);
+            let vx = wind.x;
+            let vy = wind.y;
             windX[idx] = vx;
             windY[idx] = vy;
             
@@ -239,29 +308,38 @@ class WeatherPhysics:
             let local_water = is_water[idx];
             let temp_evap = max(0.01, (temperature[idx] + 10.0) * 0.015) * params.dt;
             
-            // 3. Advection (Semi-Lagrangian)
-            let prev_x = f32(col) - vx * params.dt * 15.0;
-            let prev_y = f32(row) - vy * params.dt * 15.0;
+            // 3. Advection (Semi-Lagrangian with RK2 Midpoint and Bicubic interpolation)
+            // Compute midpoint velocity using race-free get_wind calls at neighboring cells
+            let mid_x = f32(col) - vx * params.dt * 15.0 * 0.5;
+            let mid_y = f32(row) - vy * params.dt * 15.0 * 0.5;
+            
+            let mpx = clamp(mid_x, 0.5, f32(w) - 1.5);
+            let mpy = clamp(mid_y, 0.5, f32(h) - 1.5);
+            
+            let mx0 = u32(floor(mpx));
+            let mx1 = mx0 + 1u;
+            let my0 = u32(floor(mpy));
+            let my1 = my0 + 1u;
+            
+            let mfx = mpx - f32(mx0);
+            let mfy = mpy - f32(my0);
+            
+            let v00 = get_wind(mx0, my0, w, h);
+            let v10 = get_wind(mx1, my0, w, h);
+            let v01 = get_wind(mx0, my1, w, h);
+            let v11 = get_wind(mx1, my1, w, h);
+            
+            let vx_mid = (v00.x * (1.0 - mfx) + v10.x * mfx) * (1.0 - mfy) + (v01.x * (1.0 - mfx) + v11.x * mfx) * mfy;
+            let vy_mid = (v00.y * (1.0 - mfx) + v10.y * mfx) * (1.0 - mfy) + (v01.y * (1.0 - mfx) + v11.y * mfx) * mfy;
+            
+            let prev_x = f32(col) - vx_mid * params.dt * 15.0;
+            let prev_y = f32(row) - vy_mid * params.dt * 15.0;
             
             let px = clamp(prev_x, 0.5, f32(w) - 1.5);
             let py = clamp(prev_y, 0.5, f32(h) - 1.5);
             
-            let x0 = u32(floor(px));
-            let x1 = x0 + 1u;
-            let y0 = u32(floor(py));
-            let y1 = y0 + 1u;
-            
-            let fx = px - f32(x0);
-            let fy = py - f32(y0);
-            
-            let val00 = moisture[y0 * w + x0];
-            let val10 = moisture[y0 * w + x1];
-            let val01 = moisture[y1 * w + x0];
-            let val11 = moisture[y1 * w + x1];
-            
-            let val0 = val00 * (1.0 - fx) + val10 * fx;
-            let val1 = val01 * (1.0 - fx) + val11 * fx;
-            let advected_moist = val0 * (1.0 - fy) + val1 * fy;
+            var advected_moist = bicubic_moisture(px, py, i32(w), i32(h));
+            advected_moist = clamp(advected_moist, 0.05, 1.0);
             
             var final_moist = advected_moist;
             if (local_water == 1u) {
@@ -451,13 +529,13 @@ class WeatherPhysics:
         vx += global_wind_vx
         vy += global_wind_vy
 
-        # Mountain Blocking
+        # Mountain Blocking (Directional slope check)
         grad_x = np.zeros_like(vx)
         grad_y = np.zeros_like(vy)
         
-        # Climbing slope checks
-        grad_x[:, 1:] = np.where(vx[:, 1:] > 0, h[:, 1:] - h[:, :-1], h[:, 1:] - h[:, :-1]) # Simplification
-        grad_y[1:, :] = np.where(vy[1:, :] > 0, h[1:, :] - h[:-1, :], h[1:, :] - h[:-1, :])
+        # Wind only blocks if blowing uphill
+        grad_x[:, 1:] = np.where(vx[:, 1:] > 0, h[:, 1:] - h[:, :-1], h[:, :-1] - h[:, 1:])
+        grad_y[1:, :] = np.where(vy[1:, :] > 0, h[1:, :] - h[:-1, :], h[:-1, :] - h[1:, :])
 
         vx = np.where(grad_x > 0, vx * np.maximum(0.05, 1.0 - grad_x * 8.0), vx)
         vy = np.where(grad_y > 0, vy * np.maximum(0.05, 1.0 - grad_y * 8.0), vy)
@@ -504,38 +582,63 @@ class WeatherPhysics:
             self.moisture[dry_mask] = np.maximum(0.1, self.moisture[dry_mask] - 0.015 * dt)
 
     def advect_cpu(self, field, vx, vy, dt):
-        """Semi-Lagrangian backtrace interpolation using NumPy."""
+        """Semi-Lagrangian backtrace interpolation using NumPy with RK2 and Bicubic interpolation."""
         w, h = self.width, self.height
         y, x = self.grid_y, self.grid_x
         
-        # Trace backwards
-        prev_x = x - vx.reshape((h, w)) * dt * 15.0
-        prev_y = y - vy.reshape((h, w)) * dt * 15.0
-
-        # Clamp boundaries
-        prev_x = np.clip(prev_x, 0.5, w - 1.5)
-        prev_y = np.clip(prev_y, 0.5, h - 1.5)
-
-        # Bilinear interpolation elements
-        x0 = np.floor(prev_x).astype(np.int32)
-        x1 = x0 + 1
-        y0 = np.floor(prev_y).astype(np.int32)
-        y1 = y0 + 1
-
-        fx = prev_x - x0
-        fy = prev_y - y0
-
-        field_2d = field.reshape((h, w))
-
-        val00 = field_2d[y0, x0]
-        val10 = field_2d[y0, x1]
-        val01 = field_2d[y1, x0]
-        val11 = field_2d[y1, x1]
-
-        val0 = val00 * (1 - fx) + val10 * fx
-        val1 = val01 * (1 - fx) + val11 * fx
+        # RK2 Midpoint step
+        mid_x = x - vx.reshape((h, w)) * dt * 15.0 * 0.5
+        mid_y = y - vy.reshape((h, w)) * dt * 15.0 * 0.5
+        mid_x = np.clip(mid_x, 0.5, w - 1.5)
+        mid_y = np.clip(mid_y, 0.5, h - 1.5)
         
-        field[:] = (val0 * (1 - fy) + val1 * fy).flatten()
+        # Sample midpoint velocity (bilinear)
+        mx0 = np.floor(mid_x).astype(np.int32)
+        mx1 = mx0 + 1
+        my0 = np.floor(mid_y).astype(np.int32)
+        my1 = my0 + 1
+        mfx = mid_x - mx0
+        mfy = mid_y - my0
+        
+        vx_2d = vx.reshape((h, w))
+        vy_2d = vy.reshape((h, w))
+        
+        vx_mid = (vx_2d[my0, mx0] * (1 - mfx) + vx_2d[my0, mx1] * mfx) * (1 - mfy) + \
+                 (vx_2d[my1, mx0] * (1 - mfx) + vx_2d[my1, mx1] * mfx) * mfy
+                 
+        vy_mid = (vy_2d[my0, mx0] * (1 - mfx) + vy_2d[my0, mx1] * mfx) * (1 - mfy) + \
+                 (vy_2d[my1, mx0] * (1 - mfx) + vy_2d[my1, mx1] * mfx) * mfy
+                 
+        # Full step trace using midpoint velocity
+        prev_x = x - vx_mid * dt * 15.0
+        prev_y = y - vy_mid * dt * 15.0
+        
+        # Pad grid with edge replication to allow -1 and +2 boundary index checks
+        field_2d = field.reshape((h, w))
+        padded = np.pad(field_2d, 2, mode='edge')
+        
+        px = np.clip(prev_x + 2.0, 2.5, w + 0.5)
+        py = np.clip(prev_y + 2.0, 2.5, h + 0.5)
+        
+        x0 = np.floor(px).astype(np.int32)
+        y0 = np.floor(py).astype(np.int32)
+        fx = px - x0
+        fy = py - y0
+        
+        def cubic_np(p0, p1, p2, p3, t):
+            return p1 + 0.5 * t * (p2 - p0 + t * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + t * (3.0 * p1 - p0 - 3.0 * p2 + p3)))
+            
+        col_val = []
+        for j in range(-1, 3):
+            r = y0 + j
+            p0 = padded[r, x0 - 1]
+            p1 = padded[r, x0]
+            p2 = padded[r, x0 + 1]
+            p3 = padded[r, x0 + 2]
+            col_val.append(cubic_np(p0, p1, p2, p3, fx))
+            
+        res = cubic_np(col_val[0], col_val[1], col_val[2], col_val[3], fy)
+        field[:] = np.clip(res, 0.05, 1.0).flatten()
 
     def update_gpu(self, dt, time_of_day, season, global_wind_speed, global_wind_angle, global_temp_shift, decouple_hydrology):
         """GPU-accelerated physics tick using WGSL Compute Shaders."""
