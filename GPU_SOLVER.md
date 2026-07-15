@@ -28,7 +28,8 @@ The simulation loop for each time-step ($dt$) is split into two compute shader m
 
 ### Startup VRAM Budget Guard
 A single 16k grid containing $16384 \times 16384$ cells consumes **1.07 GB** of VRAM per float32 storage buffer. On dedicated GPU servers, we enforce a **90% VRAM cap** based on the `GPU_VRAM_GB` environment variable (default: `8` GB) to prevent Out-of-Memory (OOM) allocations:
-$$\text{Max Allowable Memory} = \text{GPU\_VRAM\_GB} \times 1024^3 \times 0.90$$
+$$\text{Max Allowable Memory} = V_{\text{limit}} \times 1024^3 \times 0.90$$
+where $V_{\text{limit}}$ is the memory limit in gigabytes configured via `GPU_VRAM_GB`.
 If the total required simulation memory exceeds this cap, the server logs a warning and automatically falls back to NumPy CPU mode before allocation.
 
 ### Multi-Tier Fallback Strategy
