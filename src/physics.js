@@ -72,32 +72,61 @@ export class WeatherPhysics {
   initWebSocket() {
     const apiHost = `${window.location.hostname}:8000`;
     const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsUrl = `${wsProto}://${apiHost}/ws/${this.clientId}`;
-    console.log(`[WebSocket] Connecting to ${wsUrl}...`);
-    this.ws = new WebSocket(wsUrl);
-    this.ws.binaryType = 'arraybuffer';
-
-    this.ws.onopen = () => {
+    
+    // 1. Initialize Control Socket
+    const controlUrl = `${wsProto}://${apiHost}/ws/control/${this.clientId}`;
+    console.log(`[WebSocket Control] Connecting to ${controlUrl}...`);
+    this.controlWs = new WebSocket(controlUrl);
+    
+    this.controlWs.onopen = () => {
       this.isConnected = true;
-      console.log("[WebSocket] Connection established.");
+      console.log("[WebSocket Control] Connection established.");
       this.sendSettings();
     };
+    
+    this.controlWs.onclose = () => {
+      this.isConnected = false;
+      console.log("[WebSocket Control] Connection lost. Reconnecting in 3s...");
+      this.closeStreamSocket();
+      setTimeout(() => this.initWebSocket(), 3000);
+    };
+    
+    this.controlWs.onerror = (err) => {
+      console.error("[WebSocket Control] Socket error:", err);
+    };
 
-    this.ws.onmessage = (event) => {
+    // 2. Initialize Data Stream Socket
+    const streamUrl = `${wsProto}://${apiHost}/ws/stream/${this.clientId}`;
+    console.log(`[WebSocket Stream] Connecting to ${streamUrl}...`);
+    this.streamWs = new WebSocket(streamUrl);
+    this.streamWs.binaryType = 'arraybuffer';
+    
+    this.streamWs.onopen = () => {
+      console.log("[WebSocket Stream] Connection established.");
+    };
+    
+    this.streamWs.onmessage = (event) => {
       if (event.data instanceof ArrayBuffer) {
         this.unpackBinaryFrame(event.data);
       }
     };
-
-    this.ws.onclose = () => {
-      this.isConnected = false;
-      console.log("[WebSocket] Connection lost. Reconnecting in 3s...");
-      setTimeout(() => this.initWebSocket(), 3000);
+    
+    this.streamWs.onclose = () => {
+      console.log("[WebSocket Stream] Connection lost.");
     };
-
-    this.ws.onerror = (err) => {
-      console.error("[WebSocket] Socket error:", err);
+    
+    this.streamWs.onerror = (err) => {
+      console.error("[WebSocket Stream] Socket error:", err);
     };
+  }
+
+  closeStreamSocket() {
+    if (this.streamWs) {
+      try {
+        this.streamWs.close();
+      } catch (e) {}
+      this.streamWs = null;
+    }
   }
 
   unpackBinaryFrame(buffer) {
@@ -137,7 +166,7 @@ export class WeatherPhysics {
   }
 
   sendSettings(settings = {}) {
-    if (!this.isConnected) return;
+    if (!this.isConnected || !this.controlWs || this.controlWs.readyState !== WebSocket.OPEN) return;
     
     // Update local variables if provided
     if (settings.pushRate) this.pushRate = settings.pushRate;
@@ -152,7 +181,7 @@ export class WeatherPhysics {
       focus_y: this.focusY,
       ...settings
     };
-    this.ws.send(JSON.stringify(payload));
+    this.controlWs.send(JSON.stringify(payload));
   }
 
   setHeightmap(img) {

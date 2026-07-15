@@ -431,53 +431,89 @@ async def simulation_loop():
         # Allow context switching and pace the ticks
         await asyncio.sleep(0.01)
 
-# WebSocket connection manager
+# WebSocket connection manager for control and streaming channels
 class ConnectionManager:
     def __init__(self):
-        self.active_connections = {}
+        self.clients = {}
 
-    async def connect(self, websocket: WebSocket, client_id: str):
+    async def connect_control(self, websocket: WebSocket, client_id: str):
         await websocket.accept()
-        self.active_connections[client_id] = {
-            "socket": websocket,
-            "push_rate": "1000ms",  # default
-            "zoomed_in": False,
-            "focus_x": 0.5,
-            "focus_y": 0.5,
-            "task": None
-        }
+        if client_id not in self.clients:
+            self.clients[client_id] = {
+                "control_socket": None,
+                "stream_socket": None,
+                "push_rate": "1000ms",
+                "zoomed_in": False,
+                "focus_x": 0.5,
+                "focus_y": 0.5,
+                "task": None
+            }
+        self.clients[client_id]["control_socket"] = websocket
         connected_clients.add(client_id)
-        # Start client-specific push task
-        self.active_connections[client_id]["task"] = asyncio.create_task(
+
+    async def connect_stream(self, websocket: WebSocket, client_id: str):
+        await websocket.accept()
+        if client_id not in self.clients:
+            self.clients[client_id] = {
+                "control_socket": None,
+                "stream_socket": None,
+                "push_rate": "1000ms",
+                "zoomed_in": False,
+                "focus_x": 0.5,
+                "focus_y": 0.5,
+                "task": None
+            }
+        self.clients[client_id]["stream_socket"] = websocket
+        if self.clients[client_id]["task"]:
+            self.clients[client_id]["task"].cancel()
+        self.clients[client_id]["task"] = asyncio.create_task(
             self.client_push_worker(client_id)
         )
 
-    def disconnect(self, client_id: str):
-        if client_id in self.active_connections:
-            self.active_connections[client_id]["task"].cancel()
-            del self.active_connections[client_id]
+    def disconnect_control(self, client_id: str):
+        if client_id in self.clients:
+            self.clients[client_id]["control_socket"] = None
+            if self.clients[client_id]["stream_socket"] is None:
+                self.cleanup_client(client_id)
+
+    def disconnect_stream(self, client_id: str):
+        if client_id in self.clients:
+            if self.clients[client_id]["task"]:
+                self.clients[client_id]["task"].cancel()
+                self.clients[client_id]["task"] = None
+            self.clients[client_id]["stream_socket"] = None
+            if self.clients[client_id]["control_socket"] is None:
+                self.cleanup_client(client_id)
+
+    def cleanup_client(self, client_id: str):
+        if client_id in self.clients:
+            if self.clients[client_id]["task"]:
+                self.clients[client_id]["task"].cancel()
+            del self.clients[client_id]
         connected_clients.discard(client_id)
 
     async def update_settings(self, client_id: str, settings: dict):
-        if client_id in self.active_connections:
-            # Update local parameters safely
-            self.active_connections[client_id]["push_rate"] = settings.get("push_rate", "1000ms")
-            self.active_connections[client_id]["zoomed_in"] = settings.get("zoomed_in", False)
-            self.active_connections[client_id]["focus_x"] = settings.get("focus_x", 0.5)
-            self.active_connections[client_id]["focus_y"] = settings.get("focus_y", 0.5)
+        if client_id in self.clients:
+            self.clients[client_id]["push_rate"] = settings.get("push_rate", self.clients[client_id]["push_rate"])
+            self.clients[client_id]["zoomed_in"] = settings.get("zoomed_in", self.clients[client_id]["zoomed_in"])
+            self.clients[client_id]["focus_x"] = settings.get("focus_x", self.clients[client_id]["focus_x"])
+            self.clients[client_id]["focus_y"] = settings.get("focus_y", self.clients[client_id]["focus_y"])
 
     async def client_push_worker(self, client_id: str):
         """Worker loop that handles custom data delivery rates per client connection."""
-        client = self.active_connections[client_id]
-        sock = client["socket"]
-
         while True:
             try:
+                if client_id not in self.clients:
+                    break
+                client = self.clients[client_id]
+                sock = client["stream_socket"]
+                if not sock:
+                    await asyncio.sleep(0.1)
+                    continue
+
                 rate_str = client["push_rate"]
-                
-                # Determine sleep duration
                 if rate_str == "real-time":
-                    sleep_time = 0.05  # Push as fast as loop ticks
+                    sleep_time = 0.05
                 elif rate_str == "250ms":
                     sleep_time = 0.25
                 elif rate_str == "500ms":
@@ -487,43 +523,36 @@ class ConnectionManager:
 
                 await asyncio.sleep(sleep_time)
 
-                # Package the grid binary data
                 async with state_lock:
                     if client["zoomed_in"]:
-                        # Send high-resolution viewport chunk matching client 256x256 buffer size
                         fx = int(client["focus_x"] * physics.width) - 128
                         fy = int(client["focus_y"] * physics.height) - 128
                         fx = max(0, min(physics.width - 256, fx))
                         fy = max(0, min(physics.height - 256, fy))
                         
                         binary_data = physics.get_serialized_chunk(fx, fy, chunk_size=256)
-                        message_header = b"\x01"  # 1 byte header: Chunk Data type
+                        message_header = b"\x01"
                     else:
-                        # Send downsampled global overlay matching client 256x256 buffer size
                         ds_factor = max(1, physics.width // 256)
                         binary_data = physics.get_serialized_grid(downsample_factor=ds_factor)
-                        message_header = b"\x00"  # 0 byte header: Global Overlay type
+                        message_header = b"\x00"
 
-                # Send binary packet
                 await sock.send_bytes(message_header + binary_data)
                 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"[WebSocket] Error pushing to client {client_id}: {e}")
+                print(f"[WebSocket Stream] Error pushing to client {client_id}: {e}")
                 break
 
 manager = ConnectionManager()
 
-@app.websocket("/ws/{client_id}")
-async def websocket_endpoint(websocket: WebSocket, client_id: str):
-    await manager.connect(websocket, client_id)
+@app.websocket("/ws/control/{client_id}")
+async def websocket_control_endpoint(websocket: WebSocket, client_id: str):
+    await manager.connect_control(websocket, client_id)
     try:
         while True:
-            # Listen for client setting changes or control edits
             data = await websocket.receive_json()
-            
-            # If client changed simulation parameters (Season, Wind, Time), update globally
             global sim_time_of_day, sim_season, global_wind_speed, global_wind_angle, global_temp_shift, sim_speed
             async with state_lock:
                 if "timeOfDay" in data:
@@ -539,15 +568,25 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 if "simSpeed" in data:
                     sim_speed = float(data["simSpeed"])
 
-            # Update local subscription rate and viewport focus
             await manager.update_settings(client_id, data)
-
     except WebSocketDisconnect:
-        manager.disconnect(client_id)
-        print(f"[WebSocket] Client {client_id} disconnected.")
+        manager.disconnect_control(client_id)
     except Exception as e:
-        manager.disconnect(client_id)
-        print(f"[WebSocket] Socket connection error: {e}")
+        manager.disconnect_control(client_id)
+        print(f"[WebSocket Control] Connection error for {client_id}: {e}")
+
+@app.websocket("/ws/stream/{client_id}")
+async def websocket_stream_endpoint(websocket: WebSocket, client_id: str):
+    await manager.connect_stream(websocket, client_id)
+    try:
+        while True:
+            # Stream socket is primarily outbound, but keep the connection alive
+            await websocket.receive_bytes()
+    except WebSocketDisconnect:
+        manager.disconnect_stream(client_id)
+    except Exception as e:
+        manager.disconnect_stream(client_id)
+        print(f"[WebSocket Stream] Connection error for {client_id}: {e}")
 
 
 
