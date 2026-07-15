@@ -88,8 +88,6 @@ export class WeatherPhysics {
       this.isConnected = true;
       console.log("[WebSocket Control] Connection established.");
       this.sendSettings();
-      // Initialize WebRTC Data Channel connection
-      this.initWebRTC();
     };
     
     this.controlWs.onmessage = (event) => {
@@ -98,6 +96,9 @@ export class WeatherPhysics {
         if (msg.type === "webrtc_answer") {
           console.log("[WebRTC] Received SDP answer from server.");
           this.handleWebRTCAnswer(msg.sdp);
+        } else if (msg.type === "ground_player_count") {
+          const el = document.getElementById("hud-ground-players");
+          if (el) el.innerText = msg.count;
         }
       } catch (e) {
         // Not a WebRTC message or JSON parsing failed
@@ -173,11 +174,27 @@ export class WeatherPhysics {
       this.stopPlayerSyncLoop();
     };
 
+    this.dataChannel.binaryType = "arraybuffer";
     this.dataChannel.onmessage = (event) => {
       try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === "players") {
-          this.otherPlayers = msg.players;
+        if (event.data instanceof ArrayBuffer) {
+          const buffer = event.data;
+          const dv = new DataView(buffer);
+          if (buffer.byteLength < 2) return;
+          const count = dv.getUint16(0, true);
+          const players = {};
+          let offset = 2;
+          for (let i = 0; i < count; i++) {
+            if (offset + 18 > buffer.byteLength) break;
+            const pid = dv.getUint16(offset, true);
+            const x = dv.getFloat32(offset + 2, true);
+            const y = dv.getFloat32(offset + 6, true);
+            const z = dv.getFloat32(offset + 10, true);
+            const rot = dv.getFloat32(offset + 14, true);
+            players[pid] = {x, y, z, rot};
+            offset += 18;
+          }
+          this.otherPlayers = players;
         }
       } catch (e) {}
     };
@@ -210,7 +227,13 @@ export class WeatherPhysics {
     this.stopPlayerSyncLoop();
     this.playerSyncInterval = setInterval(() => {
       if (this.dataChannel && this.dataChannel.readyState === "open") {
-        this.dataChannel.send(JSON.stringify(this.playerPosition));
+        const buffer = new ArrayBuffer(16);
+        const dv = new DataView(buffer);
+        dv.setFloat32(0, this.playerPosition.x || 0.0, true);
+        dv.setFloat32(4, this.playerPosition.y || 0.0, true);
+        dv.setFloat32(8, this.playerPosition.z || 0.0, true);
+        dv.setFloat32(12, this.playerPosition.rot || 0.0, true);
+        this.dataChannel.send(buffer);
       }
     }, 1000 / 30); // 30 FPS
   }
@@ -233,6 +256,18 @@ export class WeatherPhysics {
       this.pc = null;
     }
     this.otherPlayers = {};
+  }
+
+  enterGroundLevel() {
+    console.log("[Simulation] Entering Ground-Level View...");
+    this.isGroundLevel = true;
+    this.initWebRTC();
+  }
+
+  exitGroundLevel() {
+    console.log("[Simulation] Exiting Ground-Level View...");
+    this.isGroundLevel = false;
+    this.closeWebRTC();
   }
 
   unpackBinaryFrame(buffer) {
