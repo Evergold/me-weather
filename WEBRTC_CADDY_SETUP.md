@@ -95,8 +95,8 @@ To handle WebRTC peer connections in Python, we use the `aiortc` library.
 1.  **Signaling Handler**: Add a listener on the `/ws/control/{client_id}` endpoint for `{"type": "offer", "sdp": "..."}` messages.
 2.  **RTC Peer Connection**: On receiving an offer, initialize a `RTCPeerConnection` instance.
 3.  **Data Channel**: Listen for the `@pc.on("datachannel")` event:
-    *   Set up a message handler to parse player position bytes (struct unpacked integers representing $x, y, z, rot$).
-    *   Push other players' telemetry back down the channel.
+    *   Set up a message handler to instantly parse player position bytes using `struct.unpack('<4f', message)` (16 bytes representing $x, y, z, rot$).
+4.  **$O(N)$ Broadcaster**: The server broadcasts player telemetry using a decoupled `asyncio.Task` ticking exactly at 30 FPS, compiling a tight binary payload of all active ground-level players and pushing it over the open datachannels.
 4.  **Send Answer**: Respond with a JSON answer back over the `/ws/control` WebSocket.
 
 ### B. Client Frontend (`src/physics.js`)
@@ -113,5 +113,5 @@ To handle WebRTC peer connections in Python, we use the `aiortc` library.
         maxRetransmits: 0       // Unreliable (0 retransmits) to avoid lag spikes
     });
     ```
-3.  **Perform Signaling**: Generate SDP offer, send it via `this.controlWs`, and set the remote description when the server returns the answer.
-4.  **Send Stream**: Call `this.dataChannel.send(bytes)` 20–30 times per second to push player position updates directly over UDP.
+3.  **Perform Signaling**: Generate SDP offer, send it via `this.controlWs`, and set the remote description when the server returns the answer. *This process strictly occurs only when a user enters **Ground-Level View**.*
+4.  **Send Stream**: Construct a 16-byte `Float32Array` (wrapped in an `ArrayBuffer`) and call `this.dataChannel.send(buffer)` at exactly 30 FPS to push player position updates directly over UDP.

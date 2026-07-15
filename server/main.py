@@ -7,6 +7,7 @@ import asyncio
 import math
 import subprocess
 import json
+import struct
 import numpy as np
 from PIL import Image
 from contextlib import asynccontextmanager
@@ -29,11 +30,14 @@ from hydrology import HydrologySolver
 async def lifespan(app: FastAPI):
     # Start background physics solver task
     task = asyncio.create_task(simulation_loop())
+    webrtc_task = asyncio.create_task(webrtc_broadcast_loop())
     yield
     # Clean up task on shutdown
     task.cancel()
+    webrtc_task.cancel()
     try:
         await task
+        await webrtc_task
     except asyncio.CancelledError:
         pass
 
@@ -435,6 +439,42 @@ async def simulation_loop():
 # WebRTC connections and player tracking globals
 pcs = {}
 active_players = {}
+client_to_pid = {}
+next_player_id = 1
+
+async def webrtc_broadcast_loop():
+    """O(N) broadcaster that pushes all active players in a single packed binary frame."""
+    last_count = -1
+    while True:
+        await asyncio.sleep(1 / 30.0)
+        
+        current_count = len(active_players)
+        if current_count != last_count:
+            last_count = current_count
+            count_msg = {"type": "ground_player_count", "count": current_count}
+            for client_id, c in list(manager.clients.items()):
+                sock = c.get("control_socket")
+                if sock:
+                    try:
+                        await sock.send_json(count_msg)
+                    except Exception:
+                        pass
+                        
+        if not active_players or not pcs:
+            continue
+        try:
+            count = len(active_players)
+            # Binary format: [num_players (uint16)] + N * [player_id (uint16), x (f32), y (f32), z (f32), rot (f32)]
+            buffer = bytearray(struct.pack('<H', count))
+            for pid, (x, y, z, rot) in list(active_players.items()):
+                buffer.extend(struct.pack('<H4f', pid, x, y, z, rot))
+            
+            payload = bytes(buffer)
+            for pc in list(pcs.values()):
+                if hasattr(pc, 'player_channel') and pc.player_channel and pc.player_channel.readyState == 'open':
+                    pc.player_channel.send(payload)
+        except Exception as e:
+            print(f"[WebRTC Broadcast] Error: {e}")
 
 # WebSocket connection manager for control and streaming channels
 class ConnectionManager:
@@ -482,11 +522,11 @@ class ConnectionManager:
                 self.cleanup_client(client_id)
         # Close and clean up WebRTC PeerConnection
         if client_id in pcs:
-            pc = pcs[client_id]
+            pc = pcs.pop(client_id)
             asyncio.create_task(pc.close())
-            del pcs[client_id]
-        if client_id in active_players:
-            del active_players[client_id]
+        pid = client_to_pid.get(client_id)
+        if pid and pid in active_players:
+            del active_players[pid]
 
     def disconnect_stream(self, client_id: str):
         if client_id in self.clients:
@@ -570,37 +610,31 @@ async def websocket_control_endpoint(websocket: WebSocket, client_id: str):
                 sdp = data["sdp"]
                 pc = RTCPeerConnection()
                 pcs[client_id] = pc
+                
+                global next_player_id
+                pid = next_player_id
+                next_player_id += 1
+                client_to_pid[client_id] = pid
 
                 @pc.on("connectionstatechange")
                 async def on_connectionstatechange():
                     if pc.connectionState in ["failed", "closed"]:
                         if client_id in pcs:
                             del pcs[client_id]
-                        if client_id in active_players:
-                            del active_players[client_id]
+                        if pid in active_players:
+                            del active_players[pid]
 
                 @pc.on("datachannel")
                 def on_datachannel(channel):
+                    pc.player_channel = channel
                     @channel.on("message")
                     def on_message(message):
                         try:
-                            pos_data = json.loads(message)
-                            active_players[client_id] = {
-                                "x": pos_data.get("x", 0.0),
-                                "y": pos_data.get("y", 0.0),
-                                "z": pos_data.get("z", 0.0),
-                                "rot": pos_data.get("rot", 0.0)
-                            }
-                            other_players = {
-                                pid: pval for pid, pval in active_players.items() if pid != client_id
-                            }
-                            response = json.dumps({
-                                "type": "players",
-                                "players": other_players
-                            })
-                            channel.send(response)
+                            if len(message) == 16:
+                                x, y, z, rot = struct.unpack('<4f', message)
+                                active_players[pid] = (x, y, z, rot)
                         except Exception as e:
-                            print(f"[WebRTC DataChannel] Error: {e}")
+                            pass
 
                 offer = RTCSessionDescription(sdp=sdp, type="offer")
                 await pc.setRemoteDescription(offer)
