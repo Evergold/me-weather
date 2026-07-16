@@ -1,3 +1,94 @@
-fn main() {
-    println!("Hello, world!");
+use axum::{
+    extract::{Path, State},
+    http::{header, StatusCode},
+    response::IntoResponse,
+    routing::get,
+    Router,
+};
+use image::{GenericImageView, DynamicImage};
+use std::sync::Arc;
+use std::path::PathBuf;
+use tokio::net::TcpListener;
+
+// Application state to hold a loaded coarse map in memory for fast serving
+struct AppState {
+    coarse_heightmap: DynamicImage,
+    coarse_normalmap: DynamicImage,
+}
+
+#[tokio::main]
+async fn main() {
+    println!("[Tile Server] Booting high-speed Rust tile streamer...");
+
+    // Load master coarse maps (simulating the load-on-demand cache)
+    let heightmap_path = "../../server/assets/heightmap_coarse.png";
+    let normalmap_path = "../../server/assets/normalmap_coarse.jpg";
+    
+    // Fallback to empty 1024x1024 images if files don't exist during testing
+    let coarse_heightmap = image::open(heightmap_path).unwrap_or_else(|_| DynamicImage::new_luma8(1024, 1024));
+    let coarse_normalmap = image::open(normalmap_path).unwrap_or_else(|_| DynamicImage::new_rgb8(1024, 1024));
+
+    let state = Arc::new(AppState {
+        coarse_heightmap,
+        coarse_normalmap,
+    });
+
+    // Build Axum router
+    let app = Router::new()
+        .route("/tiles/:z/:map_type/:x_y", get(serve_tile))
+        .with_state(state);
+
+    let listener = TcpListener::bind("0.0.0.0:8001").await.unwrap();
+    println!("[Tile Server] Listening on http://0.0.0.0:8001");
+    
+    axum::serve(listener, app).await.unwrap();
+}
+
+async fn serve_tile(
+    Path((z, map_type, x_y)): Path<(u32, String, String)>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    // Parse {x}_{y}.png
+    let parts: Vec<&str> = x_y.trim_end_matches(".png").split('_').collect();
+    if parts.len() != 2 {
+        return (StatusCode::BAD_REQUEST, "Invalid tile coordinate format").into_response();
+    }
+
+    let tx: u32 = parts[0].parse().unwrap_or(0);
+    let ty: u32 = parts[1].parse().unwrap_or(0);
+
+    // Dynamic 256px tile slicing
+    let tile_size = 256;
+    
+    let source_image = match map_type.as_str() {
+        "height" => &state.coarse_heightmap,
+        "normal" => &state.coarse_normalmap,
+        _ => return (StatusCode::NOT_FOUND, "Unknown map type").into_response(),
+    };
+
+    // Calculate crop window based on zoom (z) and tile coords (tx, ty)
+    // For simplicity in this scaffold, we just crop directly if within bounds
+    let crop_x = tx * tile_size;
+    let crop_y = ty * tile_size;
+
+    if crop_x + tile_size > source_image.width() || crop_y + tile_size > source_image.height() {
+        return (StatusCode::NOT_FOUND, "Tile out of bounds").into_response();
+    }
+
+    // Crop the image on the fly
+    let tile = source_image.crop_imm(crop_x, crop_y, tile_size, tile_size);
+
+    // Encode to PNG byte buffer
+    let mut bytes: Vec<u8> = Vec::new();
+    let mut cursor = std::io::Cursor::new(&mut bytes);
+    if tile.write_to(&mut cursor, image::ImageFormat::Png).is_err() {
+        return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to encode tile").into_response();
+    }
+
+    // Return native PNG byte stream
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "image/png")],
+        bytes,
+    ).into_response()
 }
