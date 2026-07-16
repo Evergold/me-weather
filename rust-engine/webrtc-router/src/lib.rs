@@ -11,9 +11,12 @@ use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::interceptor::registry::Registry;
 use tokio::sync::mpsc;
 
+use std::collections::HashMap;
+
 pub async fn start_webrtc_server(
-    tx: mpsc::Sender<(String, String)>,
-    mut offer_rx: mpsc::Receiver<(String, tokio::sync::oneshot::Sender<String>)>
+    tx: mpsc::Sender<(String, Vec<u8>)>,
+    mut offer_rx: mpsc::Receiver<(String, String, tokio::sync::oneshot::Sender<String>)>,
+    mut data_rx: mpsc::Receiver<(String, Vec<u8>)>
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("[WebRTC Router] Booting massively parallel Rust WebRTC router...");
 
@@ -42,11 +45,26 @@ pub async fn start_webrtc_server(
 
     println!("[WebRTC Router] Ready to accept SDP offers via Gateway signaling...");
     
-    while let Some((offer_str, reply_tx)) = offer_rx.recv().await {
-        println!("[WebRTC Router] Received SDP offer, generating peer connection...");
+    let active_channels: Arc<Mutex<HashMap<String, Arc<RTCDataChannel>>>> = Arc::new(Mutex::new(HashMap::new()));
+    
+    let channels_clone = active_channels.clone();
+    tokio::spawn(async move {
+        while let Some((client_id, data)) = data_rx.recv().await {
+            let map = channels_clone.lock().await;
+            if let Some(dc) = map.get(&client_id) {
+                let _ = dc.send(&bytes::Bytes::from(data)).await;
+            }
+        }
+    });
+
+    while let Some((client_id, offer_str, reply_tx)) = offer_rx.recv().await {
+        println!("[WebRTC Router] Received SDP offer for {}, generating peer connection...", client_id);
         let api_clone = Arc::clone(&api);
         let config_clone = config.clone();
         let tx_clone = tx.clone();
+        let channels_clone = active_channels.clone();
+        
+        let client_id_for_dc = client_id.clone();
         
         tokio::spawn(async move {
             let peer_connection = Arc::new(api_clone.new_peer_connection(config_clone).await.unwrap());
@@ -62,24 +80,35 @@ pub async fn start_webrtc_server(
 
             // Register DataChannel creation handler
             let tx_clone2 = tx_clone.clone();
+            let channels_clone_for_dc = channels_clone.clone();
             peer_connection.on_data_channel(Box::new(move |d: Arc<RTCDataChannel>| {
                 let d_label = d.label().to_owned();
                 let d_id = d.id();
                 println!("[WebRTC Router] New DataChannel '{}' ({})", d_label, d_id);
 
+                let client_id_clone = client_id_for_dc.clone();
+                let client_id_clone2 = client_id_for_dc.clone();
+                
+                let channels_map = channels_clone_for_dc.clone();
+                let d_clone_for_map = Arc::clone(&d);
+                let client_id_for_map = client_id_for_dc.clone();
+                
+                tokio::spawn(async move {
+                    channels_map.lock().await.insert(client_id_for_map, d_clone_for_map);
+                });
+
                 d.on_open(Box::new(move || {
-                    println!("[WebRTC Router] Data channel '{}' open.", d_label);
+                    println!("[WebRTC Router] Data channel '{}' open for client {}.", d_label, client_id_clone);
                     Box::pin(async {})
                 }));
 
                 let tx_clone3 = tx_clone2.clone();
-                let d2 = Arc::clone(&d);
                 d.on_message(Box::new(move |msg: DataChannelMessage| {
-                    let msg_str = String::from_utf8(msg.data.to_vec()).unwrap_or_else(|_| "Binary data".to_string());
-                    let d_label2 = d2.label().to_string();
                     let tx3 = tx_clone3.clone();
+                    let cid = client_id_clone2.clone();
+                    let data = msg.data.to_vec();
                     Box::pin(async move {
-                        let _ = tx3.send((d_label2, msg_str)).await;
+                        let _ = tx3.send((cid, data)).await;
                     })
                 }));
 
