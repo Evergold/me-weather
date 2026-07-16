@@ -29,7 +29,7 @@ The suite strictly enforces 5 core pillars of the engine's functionality:
 
 ### 1. Multiplayer Stress Testing (AOI Bot Swarms)
 *   **What it does:** Spawns 10 complete headless browser contexts simultaneously and points them all to the simulation.
-*   **Why we automate it:** Validates that our **Area of Interest (AOI) Spatial Filtering** in the Python server correctly multiplexes and isolates WebRTC `Float32Array` payloads across a swarm of concurrent peers without dropping connections.
+*   **Why we automate it:** Validates that our **Area of Interest (AOI) Spatial Filtering** in the Rust server correctly multiplexes and isolates WebRTC `Float32Array` payloads across a swarm of concurrent peers without dropping connections.
 
 ### 2. Precise FPS & Performance Regression
 *   **What it does:** Hooks into the raw Chrome DevTools Protocol (CDP) API (`Performance.getMetrics`) to mathematically average the true frames rendered over exactly 2 seconds of GPU processing time.
@@ -49,26 +49,21 @@ The suite strictly enforces 5 core pillars of the engine's functionality:
 
 ---
 
-## ⚙️ Backend Regression Tests (Pytest)
+## ⚙️ Backend Unit Tests (Cargo)
 
-Before the frontend UI was fully integrated, the Python backend (`server/`) was heavily tested using a custom `pytest` suite. This guarantees the mathematical fidelity of the simulation grids and weather solvers.
+The Rust backend engine (`rust-engine/`) is tested using native `cargo test` suites to guarantee mathematical fidelity, buffer configurations, and the execution logic of the physics solver.
 
 ### Running the Backend Suite
 ```bash
-cd server
-./.venv/bin/pytest -v
+cd rust-engine/physics
+cargo test
 ```
 
 ### Automated Backend Test Coverage
-The suite actively asserts 5 core simulation properties across `test_physics.py` and `test_api.py`:
+The suite actively asserts the logic of the `ExecutionMode` engine in `physics/src/lib.rs`:
 
-1.  **`test_weather_physics_instantiation`**
-    *   **What it does:** Verifies that the core `WeatherPhysics` class successfully pre-allocates all large NumPy arrays (temperature, moisture, wind vectors) for a massive $2000 \times 2000$ grid without crashing the server's memory.
-2.  **`test_weather_physics_update`**
-    *   **What it does:** Runs a single simulation tick and asserts that the resulting float grids do not contain any `NaN` or `Infinity` values, guaranteeing thermal stability.
-3.  **`test_hydrology_solver`**
-    *   **What it does:** Asserts that the cellular automaton flow-routing algorithm (`HydrologySolver`) successfully accumulates downstream river widths without entering infinite loops on flat terrain.
-4.  **`test_cpu_gpu_consistency`**
-    *   **What it does:** The most critical test. It executes the exact same atmospheric equations simultaneously on the NumPy CPU fallback and the `wgpu-py` WGSL shader. It then calculates the delta between the two output grids, asserting that the hardware-accelerated GPU math perfectly matches the precise CPU math within an acceptable float tolerance margin ($10^{-5}$).
-5.  **`test_websocket_control_settings` (API)**
-    *   **What it does:** Uses `FastAPI TestClient` to spin up a mock WebSocket connection to `/ws/control/`. It intercepts the ASGI application lifecycle, sends a simulated JSON UI setting (e.g. `{"timeOfDay": 1200}`), and asserts that the `ConnectionManager` successfully updates the global Python engine variables without dropping the socket connection.
+1.  **`test_physics_solver_compiles`**
+    *   **What it does:** Verifies that the native WebGPU pipeline and `wgpu` module structure compiles correctly even in a headless CI environment without an active display adapter (vulkan/metal).
+2.  **`test_meshing_mode_logic`**
+    *   **What it does:** Exhaustively tests the `determine_execution_mode` tri-state branch. It mathematically guarantees the engine correctly falls back to `Tiled` compute when huge buffers exceed VRAM limits, and strictly respects the `FORCE_MESHING` environment overrides (Auto/True/False).
+    *   **Why we automate it:** This ensures that server meshing and Iterative Tiled Compute mode fail-safes trigger exactly when expected, preventing out-of-memory crashes on massive maps.
