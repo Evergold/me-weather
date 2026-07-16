@@ -4,12 +4,17 @@ import cullShaderCode from './cull.wgsl?raw';
 export class TerrainCuller {
     constructor(engine) {
         this.engine = engine;
-        // Temporarily disable WebGPU compute culling to prevent StorageBuffer recreation memory leaks
-        // CPU culling is extremely fast for quadtree tile sets and avoids GPU data transfer overhead
-        this.isSupported = false; // engine.isWebGPU;
+        // Re-enabled WebGPU compute culling with persistent buffers to scale to millions of objects
+        this.isSupported = engine.isWebGPU;
         
         if (this.isSupported) {
             this.initComputeShader();
+            
+            // Persistent buffer tracking to prevent memory leaks
+            this.tilesCapacity = 0;
+            this.tilesBuffer = null;
+            this.visibleTilesBuffer = null;
+            this.visibleCountBuffer = null;
         }
     }
 
@@ -32,6 +37,11 @@ export class TerrainCuller {
         this.frustumBuffer = new BABYLON.UniformBuffer(this.engine, undefined, undefined, "frustumBuffer");
         // 6 planes * 4 floats (vec3 + dist padded to vec4) = 24 floats = 96 bytes
         this.frustumBuffer.addUniform("planes", 4, 6);
+        // WGSL struct requires 16-byte alignment padding (4 floats = 16 bytes)
+        this.frustumBuffer.addUniform("tileCount", 1);
+        this.frustumBuffer.addUniform("padding1", 1);
+        this.frustumBuffer.addUniform("padding2", 1);
+        this.frustumBuffer.addUniform("padding3", 1);
     }
 
     async cullTilesAsync(camera, tilesArray) {
@@ -66,15 +76,27 @@ export class TerrainCuller {
             tilesDataUint[offset + 8] = i; // id (index)
         }
 
-        const tilesBuffer = new BABYLON.StorageBuffer(this.engine, tilesData.byteLength);
-        tilesBuffer.update(tilesData);
+        // Dynamically reallocate persistent buffers only when capacity is exceeded
+        if (tileCount > this.tilesCapacity) {
+            this.tilesCapacity = Math.max(tileCount, this.tilesCapacity * 2 || 1024);
+            
+            if (this.tilesBuffer) this.tilesBuffer.dispose();
+            if (this.visibleTilesBuffer) this.visibleTilesBuffer.dispose();
+            if (this.visibleCountBuffer) this.visibleCountBuffer.dispose();
+            
+            this.tilesBuffer = new BABYLON.StorageBuffer(this.engine, this.tilesCapacity * 48);
+            this.visibleTilesBuffer = new BABYLON.StorageBuffer(this.engine, this.tilesCapacity * 4);
+            this.visibleCountBuffer = new BABYLON.StorageBuffer(this.engine, 4);
+            
+            this.computeShader.setStorageBuffer("tiles", this.tilesBuffer);
+            this.computeShader.setStorageBuffer("visible_tiles", this.visibleTilesBuffer);
+            this.computeShader.setStorageBuffer("visible_count", this.visibleCountBuffer);
+        }
 
-        // 2. Prepare Output Buffers
-        const visibleTilesBuffer = new BABYLON.StorageBuffer(this.engine, tileCount * 4);
-        const visibleCountBuffer = new BABYLON.StorageBuffer(this.engine, 4);
-        visibleCountBuffer.update(new Uint32Array([0]));
+        this.tilesBuffer.update(tilesData);
+        this.visibleCountBuffer.update(new Uint32Array([0]));
 
-        // 3. Update Frustum Planes
+        // 2. Update Frustum Planes
         const frustumPlanes = BABYLON.Frustum.GetPlanes(camera.getTransformationMatrix());
         for (let i = 0; i < 6; i++) {
             const p = frustumPlanes[i];
@@ -84,28 +106,23 @@ export class TerrainCuller {
                 i
             );
         }
+        this.frustumBuffer.updateInt("tileCount", tileCount);
         this.frustumBuffer.update();
 
-        // 4. Bind and Dispatch
+        // 3. Bind and Dispatch
         this.computeShader.setUniformBuffer("frustum", this.frustumBuffer);
-        this.computeShader.setStorageBuffer("tiles", tilesBuffer);
-        this.computeShader.setStorageBuffer("visible_tiles", visibleTilesBuffer);
-        this.computeShader.setStorageBuffer("visible_count", visibleCountBuffer);
+        // (Storage buffers are bound persistently during allocation)
 
         const workgroups = Math.ceil(tileCount / 64);
         this.computeShader.dispatch(workgroups, 1, 1);
 
-        // 5. Readback results
-        const countData = await visibleCountBuffer.read();
+        // 4. Readback results
+        const countData = await this.visibleCountBuffer.read();
         const count = new Uint32Array(countData.buffer)[0];
 
-        const visibleData = await visibleTilesBuffer.read();
+        // Only slice the exact number of visible items read from the persistent buffer
+        const visibleData = await this.visibleTilesBuffer.read();
         const visibleIndices = new Uint32Array(visibleData.buffer).slice(0, count);
-
-        // Cleanup temporary buffers
-        tilesBuffer.dispose();
-        visibleTilesBuffer.dispose();
-        visibleCountBuffer.dispose();
 
         // Map back to original keys
         const visibleKeys = new Set();
