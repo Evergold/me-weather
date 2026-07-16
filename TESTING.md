@@ -8,19 +8,20 @@ To guarantee the engine remains rock solid, we use **Playwright** to execute a s
 
 ## 🚀 Running the Frontend E2E Suite
 
-The E2E tests are organized under the `tests/` directory:
-- `tests/e2e/` - Contains the Playwright and Puppeteer integration tests (e.g., `puppeteer_test.js`)
+The E2E tests and automated runners are organized under the `tests/` directory:
+- `tests/e2e/` - Contains the Playwright E2E integration test suites (e.g., `e2e.spec.js`)
 - `tests/unit/` - Contains isolated unit tests (e.g., `test-frustum.mjs`)
+- `tests/test.mjs`, `tests/test_playwright.mjs`, `tests/test_webgl.mjs`, `tests/limits.mjs` - Standalone headless execution scripts and environment limit verifications
 
-To execute the core E2E suite:
+To execute the core standalone headless verification:
 
 1. Ensure your local `vite` development server is running in one terminal:
    ```bash
    npm run dev
    ```
-2. In a second terminal, execute the desired test file. For example:
+2. In a second terminal, execute the desired test script. For example:
    ```bash
-   node tests/e2e/puppeteer_test.mjs
+   node tests/test.mjs
    ```
 
 *(The suite will automatically launch a headless browser instance, run the verifications, and report the results).*
