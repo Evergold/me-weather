@@ -4,9 +4,32 @@ use std::borrow::Cow;
 pub mod octree;
 pub mod collider;
 
+#[derive(Debug, PartialEq)]
 pub enum ExecutionMode {
     Monolithic,
     Tiled { tile_size: u32, halo_size: u32, master_grid: Option<Vec<f32>> },
+}
+
+pub fn determine_execution_mode(buffer_size: wgpu::BufferAddress, physical_vram_limit: wgpu::BufferAddress, force_meshing: &str) -> ExecutionMode {
+    let meshing_upper = force_meshing.to_uppercase();
+    let is_force_true = meshing_upper == "TRUE";
+    let is_force_false = meshing_upper == "FALSE"; // Auto is the default behavior
+    
+    let limits_exceeded = buffer_size > 2147483647 || buffer_size > physical_vram_limit;
+    
+    if limits_exceeded || is_force_true {
+        if is_force_true {
+            println!("[Physics Engine] FORCE_MESHING=True detected. Activating Tiled Compute Mode to join cluster.");
+        } else if is_force_false {
+            println!("[Physics Engine] Grid size exceeds VRAM limits, but FORCE_MESHING=False. Falling back to LOCAL Iterative Tiled Compute Mode without cluster meshing.");
+        } else {
+            println!("[Physics Engine] Grid size exceeds VRAM limits (FORCE_MESHING=Auto). Activating Server Meshing to avoid PCIe bottlenecks.");
+        }
+        ExecutionMode::Tiled { tile_size: 4096, halo_size: 16, master_grid: None }
+    } else {
+        println!("[Physics Engine] Grid fits entirely in VRAM. Single-machine execution is optimal (Server Meshing would artificially introduce network latency).");
+        ExecutionMode::Monolithic
+    }
 }
 
 pub struct PhysicsSolver {
@@ -72,36 +95,7 @@ impl PhysicsSolver {
         let limit_percent = if is_headless { 95 } else { 80 };
         let physical_vram_limit = (gpu_vram_gb as wgpu::BufferAddress) * 1024 * 1024 * 1024 * limit_percent / 100;
         
-        let meshing_upper = force_meshing.to_uppercase();
-        let is_force_true = meshing_upper == "TRUE";
-        let is_force_false = meshing_upper == "FALSE"; // Auto is the default behavior
-        
-        let limits_exceeded = buffer_size > 2147483647 || buffer_size > physical_vram_limit;
-        
-        let mode = if limits_exceeded || is_force_true {
-            // Documenting Limits: 
-            // 1. The WebGPU specification caps individual storage buffers at ~2GB (2147483647 bytes).
-            // 2. We also reserve a dynamic percentage of physical VRAM for the host OS to prevent OOM panics.
-            
-            if is_force_true {
-                println!("[Physics Engine] FORCE_MESHING=True detected. Activating Tiled Compute Mode to join cluster.");
-            } else if is_force_false {
-                println!("[Physics Engine] Grid size exceeds VRAM limits, but FORCE_MESHING=False. Falling back to LOCAL Iterative Tiled Compute Mode without cluster meshing.");
-            } else {
-                println!("[Physics Engine] Grid size exceeds VRAM limits (FORCE_MESHING=Auto). Activating Server Meshing to avoid PCIe bottlenecks.");
-            }
-            
-            // Halo Size (Ghost Cells) Context:
-            // 16 pixels is sufficient for most advection/velocity bounds (e.g. winds at 100m/s crossing
-            // less than 2 pixels per frame at 60 FPS). The only exception is Global Incompressible Flow
-            // (pressure waves), which would require a larger halo or global solve. However, incompressible
-            // flow is only mathematically applicable to microscopic simulations. Since our geographic weather
-            // model simulates massive-scale compressible atmosphere, 16 pixels is perfectly adequate and physically accurate.
-            ExecutionMode::Tiled { tile_size: 4096, halo_size: 16, master_grid: None }
-        } else {
-            println!("[Physics Engine] Grid fits entirely in VRAM. Single-machine execution is optimal (Server Meshing would artificially introduce network latency).");
-            ExecutionMode::Monolithic
-        };
+        let mode = determine_execution_mode(buffer_size, physical_vram_limit, &force_meshing);
 
         let allocation_size = match mode {
             ExecutionMode::Monolithic => buffer_size,
@@ -166,7 +160,28 @@ mod tests {
     #[test]
     fn test_physics_solver_compiles() {
         // We cannot reliably instantiate a wgpu::Device in a headless CI environment
-        // without a lavapipe or software renderer. For now, we assert the module compiles.
-        assert!(true, "wgpu module structure and WGSL dispatcher compiles successfully");
+        // without an active display adapter (vulkan/metal). So we just ensure it builds!
+        assert!(true);
+    }
+    
+    #[test]
+    fn test_meshing_mode_logic() {
+        // Test 1: Grid fits in VRAM, FORCE_MESHING = Auto -> Monolithic
+        assert_eq!(determine_execution_mode(1024, 2048, "Auto"), ExecutionMode::Monolithic);
+        
+        // Test 2: Grid fits in VRAM, FORCE_MESHING = False -> Monolithic
+        assert_eq!(determine_execution_mode(1024, 2048, "False"), ExecutionMode::Monolithic);
+
+        // Test 3: Grid fits in VRAM, FORCE_MESHING = True -> Tiled
+        assert_eq!(determine_execution_mode(1024, 2048, "True"), ExecutionMode::Tiled { tile_size: 4096, halo_size: 16, master_grid: None });
+
+        // Test 4: Grid EXCEEDS VRAM limits, FORCE_MESHING = Auto -> Tiled
+        assert_eq!(determine_execution_mode(3048, 2048, "Auto"), ExecutionMode::Tiled { tile_size: 4096, halo_size: 16, master_grid: None });
+
+        // Test 5: Grid EXCEEDS VRAM limits, FORCE_MESHING = False -> Tiled (Because it must split compute locally to prevent OOM)
+        assert_eq!(determine_execution_mode(3048, 2048, "False"), ExecutionMode::Tiled { tile_size: 4096, halo_size: 16, master_grid: None });
+        
+        // Test 6: Grid EXCEEDS hard WebGPU limits -> Tiled
+        assert_eq!(determine_execution_mode(3_000_000_000, 4_000_000_000, "Auto"), ExecutionMode::Tiled { tile_size: 4096, halo_size: 16, master_grid: None });
     }
 }

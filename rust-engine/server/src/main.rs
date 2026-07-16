@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use std::net::SocketAddr;
+pub mod cluster;
 
 // Shared Game State Authority
 struct AppState {
@@ -44,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let enable_hydrology = std::env::var("ENABLE_HYDROLOGY").unwrap_or_else(|_| "True".to_string()).eq_ignore_ascii_case("true");
     let gpu_vram_gb = std::env::var("GPU_VRAM_GB").unwrap_or_else(|_| "8".to_string()).parse::<u32>().unwrap_or(8);
     let headless = std::env::var("HEADLESS").unwrap_or_else(|_| "False".to_string()).eq_ignore_ascii_case("true");
-    let force_meshing = std::env::var("FORCE_MESHING").unwrap_or_else(|_| "Auto".to_string());
+    let force_meshing = std::env::var("FORCE_MESHING").unwrap_or_else(|_| "False".to_string());
 
     let heightmap_filename = std::env::var("HEIGHTMAP_FILENAME").unwrap_or_else(|_| "heightmap_coarse.png".to_string());
     let heightmap_path = format!("../server/assets/{}", heightmap_filename);
@@ -58,18 +59,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let scylla_uri = std::env::var("SCYLLA_URI").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
     
     println!("[Database] Attempting to connect to ScyllaDB at {}...", scylla_uri);
-    let db_session = match scylla::client::session_builder::SessionBuilder::new().known_node(&scylla_uri).build().await {
+    let mut db_session_opt = None;
+    
+    match scylla::client::session_builder::SessionBuilder::new().known_node(&scylla_uri).build().await {
         Ok(session) => {
             println!("[Database] Successfully connected to ScyllaDB cluster.");
-            // Scaffold the Keyspace and Table for Server Meshing (4096x4096 tiles)
-            let _ = session.query_unpaged("CREATE KEYSPACE IF NOT EXISTS weather_sim WITH REPLICATION = {'class' : 'SimpleStrategy', 'replication_factor' : 1}", &[]).await;
-            let _ = session.query_unpaged("CREATE TABLE IF NOT EXISTS weather_sim.tiles (tile_id text PRIMARY KEY, data blob, last_updated timestamp)", &[]).await;
-            Some(Arc::new(session))
+            db_session_opt = Some(session);
         },
         Err(e) => {
-            println!("[Database] Failed to connect to ScyllaDB ({}). Running in isolated single-node mode.", e);
-            None
+            println!("[Database] Connection failed ({}). Attempting to automatically start ScyllaDB via Docker...", e);
+            let docker_result = std::process::Command::new("docker")
+                .args(["run", "--name", "scylla-node", "-d", "-p", "9042:9042", "scylladb/scylla:5.4.0"])
+                .output();
+                
+            if docker_result.is_ok() {
+                println!("[Database] Docker container started. Waiting 15 seconds for ScyllaDB to initialize...");
+                tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+                
+                // Retry connection
+                if let Ok(session) = scylla::client::session_builder::SessionBuilder::new().known_node(&scylla_uri).build().await {
+                    println!("[Database] Successfully auto-started and connected to local ScyllaDB cluster!");
+                    db_session_opt = Some(session);
+                } else {
+                    println!("[Database] Auto-start timed out. Running in isolated single-node mode.");
+                }
+            } else {
+                println!("[Database] Docker is not available. Running in isolated single-node mode.");
+            }
         }
+    }
+    
+    let db_session = if let Some(session) = db_session_opt {
+        // Scaffold the Keyspace and Table for Server Meshing
+        let _ = session.query_unpaged("CREATE KEYSPACE IF NOT EXISTS weather_sim WITH REPLICATION = {'class' : 'SimpleStrategy', 'replication_factor' : 1}", &[]).await;
+        let _ = session.query_unpaged("CREATE TABLE IF NOT EXISTS weather_sim.tiles (tile_id text PRIMARY KEY, data blob, last_updated timestamp)", &[]).await;
+        Some(Arc::new(session))
+    } else {
+        None
     };
 
     let (tx, _rx) = broadcast::channel(100);

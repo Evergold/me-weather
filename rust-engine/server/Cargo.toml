@@ -13,3 +13,6 @@ webrtc-router = { path = "../webrtc-router" }
 physics = { path = "../physics" }
 dotenvy = "0.15"
 scylla = "1.7.0"
+
+[dev-dependencies]
+testcontainers = "0.23.1"
