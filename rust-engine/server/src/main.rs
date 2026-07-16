@@ -27,6 +27,8 @@ struct ControlMessage {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenvy::dotenv().ok(); // Load environment variables from .env file
+    
     println!("[Orchestrator] Booting monolithic Rust backend on port 8000...");
 
     // 1. Initialize the WGPU Physics Engine (in-memory)
