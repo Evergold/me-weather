@@ -9,11 +9,13 @@ An interactive, GPU-accelerated client-server weather simulator of Middle-earth.
 ## ✨ Features
 
 *   **Server-Side Terrain Map Support**: The server holds and serves the master elevation maps (`heightmap_coarse.png` and `normalmap_coarse.jpg`). It dynamically slices high-res tiles on startup. If assets are missing, the server halts startup to ensure data integrity.
-*   **Unified Client-Server Process**: In production mode, the Python FastAPI server serves the physics simulation and WebSocket telemetry channel on port `8000`, while directly mounting and hosting the compiled Vite client assets (`dist/`) from the same port.
-*   **Vectorized & Cached CPU Fallback**: Runs the high-resolution grid simulation steps on a background OS worker thread (`asyncio.to_thread`), freeing the FastAPI event loop. Large mesh grids, latitudinal heating factors, and Coriolis constants are pre-allocated and cached in memory, boosting NumPy performance by over 300%.
-*   **WebGPU Compute Buffer Setup**: Sync-requests Vulkan/EGL adapters and devices natively on the host server via `wgpu-py`, allocating and uploading simulation buffers for native hardware execution.
+*   **Unified Client-Server Process**: In production mode, the monolithic Rust Axum server orchestrates the physics simulation and WebSocket telemetry channel on port `8000`, while directly mounting and hosting the compiled Vite client assets (`dist/`) from the same port.
+*   **Iterative Tiled Compute Mode**: If the requested simulation grid exceeds the WebGPU 2GB per-buffer limit or dynamically configured VRAM thresholds, the physics solver seamlessly falls back to streaming 4096x4096 chunked tiles to the GPU sequentially. This completely bypasses VRAM exhaustion crashes while preserving hardware-accelerated speeds for theoretically infinite map sizes.
+*   **WebGPU Compute Buffer Setup**: Sync-requests Vulkan/EGL adapters and devices natively on the host server via `wgpu-rs`, allocating and uploading simulation buffers for native hardware execution.
 *   **Volumetric 3D Cloud Particles**: Renders 6,000 large, additive-blended vapor points on the client browser. The cloud points float at varying volumetric heights, drift dynamically with local wind vectors, and cluster exclusively in high-humidity areas (moisture $\ge 55\%$) for realistic atmospheric depth.
-*   **Custom Terrain Shader**: Renders a 3D displaced terrain mesh in WebGL (Three.js). Toggling the **Moisture overlay** overlays a smooth, royal blue vapor flow on top of the green and rocky geographic terrain colors, matching the prototype visual style.
+*   **Custom Terrain Shader**: Renders a 3D displaced terrain mesh in WebGPU / WebGL 2 (Babylon.js). Toggling the **Moisture overlay** overlays a smooth, royal blue vapor flow on top of the green and rocky geographic terrain colors, matching the prototype visual style.
+*   **Client-Side WebGPU Culling**: Offloads the heavy mathematical burden of frustum chunk visibility culling from the single-threaded JavaScript CPU directly to the GPU via a native WebGPU Compute Shader (`cull.wgsl`), processing thousands of tile bounding boxes in parallel.
+*   **Hybrid (server-authoritative) Collision Model**: Employs a hybrid 2D Heightmap array and 3D Rust Octree collision system on the backend to validate movement in real-time, completely preventing clients from teleporting or flying through the terrain mesh.
 *   **Overhead & Perspective Camera Fitting**: Overhead view dynamically calculates camera heights based on the camera FOV and current viewport aspect ratio to guarantee the 2000x2000 map fits perfectly on resize, while preserving the visibility of the control sidebar.
 *   **Quantized Binary Telemetry**: Streams data over binary WebSockets packed into quantized Float16 ArrayBuffers, reducing network bandwidth and avoiding JSON parsing overhead on the client.
 *   **Landmarks & Custom Pins**: Landmark weather stations render rings at their correct 3D terrain height. Custom user pins can be placed with a right-click and persist across page loads using `localStorage`.
@@ -119,7 +121,7 @@ GPU_VRAM_GB=8
 ```
 
 ### 🗂️ Tiled Map Import (Gaea / World Machine / Terraform)
-To support massive resolution maps (like 16k+) without triggering OutOfMemory errors in Python when loading giant master files, you can place pre-tiled terrain grids exported from external tools directly into the server assets.
+To support massive resolution maps (like 16k+) without triggering OutOfMemory errors when loading giant master files, you can place pre-tiled terrain grids exported from external tools directly into the server assets.
 
 #### 1. Folder Structure:
 Create a directory under `server/assets/` (e.g. `server/assets/gondor_16k_tiled/`) structured as follows:
@@ -207,7 +209,7 @@ For a production-ready deployment, browsers require a secure origin (HTTPS/WSS) 
 
 ### Why Caddy?
 *   **Automatic TLS**: Caddy automatically provisions and renews SSL certificates (via Let's Encrypt / ZeroSSL) with zero manual intervention or cron jobs.
-*   **High Performance**: Offloads encryption/decryption overhead from the Python event loop to Caddy's high-speed Go network layer, preserving 100% of our FastAPI backend's CPU power for WebGPU/physics simulation execution.
+*   **High Performance**: Offloads encryption/decryption overhead to Caddy's high-speed Go network layer, preserving 100% of our Rust backend's CPU power for WebGPU/physics simulation execution.
 *   **WebSocket Upgrades**: Natively handles connection upgrades for the multiplexed control and stream sockets.
 
 ### Localhost vs. Production TLS
