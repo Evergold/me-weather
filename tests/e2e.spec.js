@@ -162,4 +162,85 @@ test.describe('Babylon.js WebGPU Simulation E2E Suite', () => {
     await Promise.all(contexts.map(ctx => ctx.close()));
   });
 
+  // -------------------------------------------------------------------------
+  // 6. WebRTC Server Meshing Integration (SDP Handshake & Binary Stream)
+  // -------------------------------------------------------------------------
+  test('WebRTC DataChannel negotiates NAT and streams native float array', async ({ page }) => {
+    // Navigate to the root (so we are on the right origin and can use WebSockets)
+    await page.goto('/');
+
+    // Inject a custom script to negotiate the SDP handshake directly with the Rust backend
+    const testResult = await page.evaluate(async () => {
+      return new Promise((resolve, reject) => {
+        // Connect to the control WebSocket for signaling
+        const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const wsUrl = `${wsProto}://${window.location.host}/ws/control/e2e_mesh_tester`;
+        const ws = new WebSocket(wsUrl);
+
+        let pc;
+        let dataChannel;
+
+        ws.onopen = async () => {
+          // Initialize WebRTC
+          pc = new RTCPeerConnection({
+            iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+          });
+
+          // The Rust backend echoes binary data down the same DataChannel
+          dataChannel = pc.createDataChannel("player_telemetry", {
+            ordered: true
+          });
+
+          dataChannel.onopen = () => {
+            // Once the DataChannel punches through, claim a physics tile!
+            dataChannel.send("CLAIM");
+          };
+
+          dataChannel.onmessage = (event) => {
+            if (event.data instanceof ArrayBuffer) {
+              // We expect a 4096 Float32 array (16,384 bytes)
+              if (event.data.byteLength === 16384) {
+                // Successfully received the binary grid!
+                resolve({ success: true, bytes: event.data.byteLength });
+                ws.close();
+                pc.close();
+              } else {
+                reject(`Received unexpected byte length: ${event.data.byteLength}`);
+              }
+            }
+          };
+
+          // Generate Offer
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+
+          // Send SDP Offer to Rust Backend via WebSocket
+          ws.send(JSON.stringify({
+            type: "webrtc_offer",
+            sdp: pc.localDescription.sdp
+          }));
+        };
+
+        ws.onmessage = async (event) => {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "webrtc_answer") {
+            await pc.setRemoteDescription(new RTCSessionDescription({
+              type: "answer",
+              sdp: msg.sdp
+            }));
+          }
+        };
+
+        ws.onerror = (err) => reject("WebSocket Error: " + err);
+
+        // Timeout after 10 seconds
+        setTimeout(() => reject("WebRTC E2E Test timed out after 10 seconds"), 10000);
+      });
+    });
+
+    // Assert that the WebRTC stream was successfully received
+    expect(testResult.success).toBe(true);
+    expect(testResult.bytes).toBe(16384);
+  });
+
 });
