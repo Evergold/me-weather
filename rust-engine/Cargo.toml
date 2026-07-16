@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "gateway",
+    "server",
     "tile-server",
     "physics",
     "webrtc-router",

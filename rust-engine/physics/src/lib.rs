@@ -29,7 +29,11 @@ impl PhysicsSolver {
                 &wgpu::DeviceDescriptor {
                     label: Some("Physics Compute Device"),
                     required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::downlevel_defaults(), // Can request max here
+                    required_limits: wgpu::Limits {
+                        max_buffer_size: 2147483647, // ~2GB to allow 16k x 16k floats
+                        max_storage_buffer_binding_size: 2147483647,
+                        ..wgpu::Limits::downlevel_defaults()
+                    },
                     memory_hints: wgpu::MemoryHints::Performance,
                     ..Default::default()
                 }

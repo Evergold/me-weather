@@ -10,8 +10,7 @@ use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::interceptor::registry::Registry;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn start_webrtc_server() -> Result<(), Box<dyn std::error::Error>> {
     println!("[WebRTC Router] Booting massively parallel Rust WebRTC router...");
 
     // Create a MediaEngine object to configure the supported codecs
