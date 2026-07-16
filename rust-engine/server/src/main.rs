@@ -13,7 +13,8 @@ pub mod cluster;
 // Shared Game State Authority
 struct AppState {
     tx: broadcast::Sender<String>,
-    offer_tx: tokio::sync::mpsc::Sender<(String, tokio::sync::oneshot::Sender<String>)>,
+    offer_tx: tokio::sync::mpsc::Sender<(String, String, tokio::sync::oneshot::Sender<String>)>,
+    data_tx: tokio::sync::mpsc::Sender<(String, Vec<u8>)>,
     physics: physics::PhysicsSolver,
     collider: physics::collider::WorldCollider,
     // ScyllaDB Session for Dynamic Server Meshing & Persistence
@@ -112,11 +113,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let (tx, _rx) = broadcast::channel(100);
-    let (offer_tx, offer_rx) = tokio::sync::mpsc::channel::<(String, tokio::sync::oneshot::Sender<String>)>(100);
+    let (offer_tx, offer_rx) = tokio::sync::mpsc::channel::<(String, String, tokio::sync::oneshot::Sender<String>)>(100);
+    let (data_tx, data_rx) = tokio::sync::mpsc::channel::<(String, Vec<u8>)>(100);
 
     let app_state = Arc::new(AppState { 
         tx,
         offer_tx,
+        data_tx,
         physics: physics_engine,
         collider,
         db: db_session,
@@ -126,33 +129,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         gpu_vram_gb,
     });
 
-    let (webrtc_tx, mut webrtc_rx) = tokio::sync::mpsc::channel::<(String, String)>(100);
+    let (webrtc_tx, mut webrtc_rx) = tokio::sync::mpsc::channel::<(String, Vec<u8>)>(100);
 
     // 2. Spawn the UDP WebRTC DataChannel Router natively in a background task
     tokio::spawn(async move {
-        if let Err(e) = webrtc_router::start_webrtc_server(webrtc_tx, offer_rx).await {
+        if let Err(e) = webrtc_router::start_webrtc_server(webrtc_tx, offer_rx, data_rx).await {
             eprintln!("[WebRTC] Router crashed: {}", e);
         }
     });
 
     // Handle incoming WebRTC cluster commands
     let router_cluster = app_state.cluster.clone();
+    let data_tx_clone = app_state.data_tx.clone();
     tokio::spawn(async move {
-        while let Some((node_id, msg)) = webrtc_rx.recv().await {
-            if let Some(cluster) = &router_cluster {
-                let mut cm = cluster.lock().await;
-                if msg == "CLAIM" {
-                    if let Some(tile) = cm.claim_tile(node_id.clone()) {
-                        println!("[Gateway] Node {} claimed tile {}", node_id, tile);
-                        // Future: Actually stream the tile float grid down the datachannel
-                    } else {
-                        println!("[Gateway] Node {} requested tile but none available or throttled", node_id);
+        while let Some((node_id, data)) = webrtc_rx.recv().await {
+            // First check if it's a string command (CLAIM/COMPLETE)
+            if let Ok(msg) = String::from_utf8(data.clone()) {
+                if let Some(cluster) = &router_cluster {
+                    let mut cm = cluster.lock().await;
+                    if msg == "CLAIM" {
+                        if let Some(tile) = cm.claim_tile(node_id.clone()) {
+                            println!("[Gateway] Node {} claimed tile {}", node_id, tile);
+                            
+                            // Create a dummy float array (e.g. 4096 floats) representing the tile state to send
+                            let mut fake_tile_data: Vec<u8> = Vec::with_capacity(4096 * 4);
+                            for i in 0..4096 {
+                                fake_tile_data.extend_from_slice(&(i as f32).to_le_bytes());
+                            }
+                            
+                            // Actually stream the tile float grid down the datachannel!
+                            println!("[Gateway] Streaming {} bytes of tile data to Node {}...", fake_tile_data.len(), node_id);
+                            let _ = data_tx_clone.send((node_id.clone(), fake_tile_data)).await;
+                            
+                        } else {
+                            println!("[Gateway] Node {} requested tile but none available or throttled", node_id);
+                        }
+                    } else if msg.starts_with("COMPLETE:") {
+                        let tile_id = msg.trim_start_matches("COMPLETE:");
+                        cm.complete_tile(tile_id, &node_id);
+                        println!("[Gateway] Node {} completed tile {}", node_id, tile_id);
                     }
-                } else if msg.starts_with("COMPLETE:") {
-                    let tile_id = msg.trim_start_matches("COMPLETE:");
-                    cm.complete_tile(tile_id, &node_id);
-                    println!("[Gateway] Node {} completed tile {}", node_id, tile_id);
                 }
+            } else {
+                // If it's pure binary data, this is a computed tile coming back from a node!
+                println!("[Gateway] Received {} bytes of computed binary data from Node {}", data.len(), node_id);
             }
         }
     });
@@ -208,12 +228,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn ws_handler(
     ws: WebSocketUpgrade,
+    axum::extract::Path(id): axum::extract::Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(|socket| handle_socket(socket, state))
+    ws.on_upgrade(move |socket| handle_socket(socket, state, id))
 }
 
-async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>) {
+async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>, client_id: String) {
     let mut rx = state.tx.subscribe();
 
     loop {
@@ -227,7 +248,7 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>) {
                         if parsed.msg_type.as_deref() == Some("webrtc_offer") {
                             if let Some(offer) = parsed.sdp {
                                 let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-                                if state.offer_tx.send((offer, reply_tx)).await.is_ok() {
+                                if state.offer_tx.send((client_id.clone(), offer, reply_tx)).await.is_ok() {
                                     if let Ok(answer) = reply_rx.await {
                                         let answer_msg = serde_json::json!({
                                             "type": "webrtc_answer",
