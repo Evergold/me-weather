@@ -35,6 +35,6 @@ async fn test_scylladb_meshing_registry() {
     
     // 5. Query it back to ensure synchronization
     let result = session.query_unpaged("SELECT data FROM weather_sim.tiles WHERE tile_id = ?", (tile_id,)).await.unwrap();
-    let rows = result.into_rows_result().unwrap().rows().unwrap();
+    let rows: Vec<(Vec<u8>,)> = result.into_rows_result().unwrap().rows::<(Vec<u8>,)>().unwrap().collect::<Result<_, _>>().unwrap();
     assert_eq!(rows.len(), 1, "Expected exactly 1 tile row");
 }
