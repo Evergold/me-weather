@@ -51,11 +51,48 @@ The suite strictly enforces 5 core pillars of the engine's functionality:
 *   **What it does:** Uses a custom Playwright evaluation script to manually perform a full WebRTC STUN/ICE handshake over the secure control WebSocket, opens the `player_telemetry` DataChannel, and asserts the successful reception of the native 16,384-byte float array.
 *   **Why we automate it:** Provides full end-to-end integration coverage for our Server-to-Peer architecture, ensuring that binary physics payloads correctly route through our UDP channels without TCP head-of-line blocking.
 
+### 7. LocalStorage DB Re-hydration
+*   **What it does:** Injects known configuration values into the browser's `localStorage`, forces a complete page reload, and asserts that the environment rehydrates correctly from the persistent cache without data loss.
+*   **Why we automate it:** Guarantees that user-defined configurations (such as customized landmark weather pins) persist across browser sessions.
+
+### 8. UI Telemetry (ControlMessage JSON)
+*   **What it does:** Synthesizes a raw telemetry event from the client and captures the outbound payload, verifying that it aligns perfectly with the backend's strict `ControlMessage` JSON schema.
+*   **Why we automate it:** Ensures the frontend correctly marshals user actions (like slider changes for time or weather) into the precise format required by the Axum server.
+
+### 9. Mobile Viewport & Dynamic Resizing
+*   **What it does:** Shrinks the Playwright viewport from 1080p desktop dimensions down to 375x667 (iPhone SE) on the fly, verifying that the `canvas` height naturally adjusts to the `60vh` rule and prevents the 3D context from clipping underneath the UI dashboard.
+*   **Why we automate it:** Ensures a functional and aesthetic layout constraint on mobile devices, confirming that responsive CSS queries fire correctly.
+
 ---
 
 ## ⚙️ Backend Unit Tests (Cargo)
 
-The Rust backend engine (`rust-engine/`) is tested using native `cargo test` suites to guarantee mathematical fidelity, buffer configurations, and the execution logic of the physics solver.
+### Docker Environment Setup
+Our backend testing uses `testcontainers` to dynamically spin up an isolated ScyllaDB container for database integration testing. This requires a functioning Docker environment with appropriate kernel features enabled for Scylla's I/O engine.
+
+#### 1. Docker Permissions
+Ensure your user has permission to interact with the Docker daemon without `sudo`:
+```bash
+sudo usermod -aG docker $USER
+newgrp docker # Apply group changes immediately
+```
+
+#### 2. Kernel Asynchronous I/O (AIO) Configuration
+ScyllaDB heavily relies on Linux AIO for high-performance disk access. Standard OS limits are often too low and will cause the `test_scylladb_meshing_registry` container to fail on boot.
+
+**Linux (Debian/Ubuntu, RHEL/CentOS, Arch):**
+You must permanently increase the `fs.aio-max-nr` limit to `1048576` or higher.
+```bash
+# Temporarily apply for the current session
+sudo sysctl -w fs.aio-max-nr=1048576
+
+# Permanently apply across reboots
+echo "fs.aio-max-nr = 1048576" | sudo tee -a /etc/sysctl.d/99-scylla.conf
+sudo sysctl -p /etc/sysctl.d/99-scylla.conf
+```
+
+**macOS & Windows (Docker Desktop / Colima / OrbStack):**
+*   **Not Applicable / Automatic**: macOS and Windows don't natively run Docker containers; instead, they run them inside a lightweight Linux VM (managed by Docker Desktop, WSL2, or OrbStack). This VM generally pre-configures AIO capabilities out of the box, or bypasses standard kernel limits. You typically do **not** need to set this configuration.
 
 ### Running the Backend Suite
 ```bash
