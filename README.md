@@ -100,8 +100,8 @@ TILED_IMPORT_DIR=gondor_16k_tiled
 # Pause physics loop when no clients are connected (True/False)
 PAUSE_ON_IDLE=True
 
-# Run river routing only once every 10s to conserve CPU (True/False)
-DECOUPLE_HYDROLOGY=False
+# Enable GPU moisture and hydrology compute shader passes (True/False)
+ENABLE_HYDROLOGY=True
 
 # Heights (cell) Installation Path
 HEIGHTS_PATH="assets"
