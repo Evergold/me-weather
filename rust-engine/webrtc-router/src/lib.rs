@@ -7,7 +7,6 @@ use webrtc::data_channel::data_channel_message::DataChannelMessage;
 use webrtc::data_channel::RTCDataChannel;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
-use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::interceptor::registry::Registry;
 use tokio::sync::mpsc;
 
@@ -18,7 +17,7 @@ pub async fn start_webrtc_server(
     mut offer_rx: mpsc::Receiver<(String, String, tokio::sync::oneshot::Sender<String>)>,
     mut data_rx: mpsc::Receiver<(String, Vec<u8>)>
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!("[WebRTC Router] Booting massively parallel Rust WebRTC router...");
+    tracing::info!("[WebRTC Router] Booting massively parallel Rust WebRTC router...");
 
     // Create a MediaEngine object to configure the supported codecs
     let mut m = MediaEngine::default();
@@ -43,7 +42,7 @@ pub async fn start_webrtc_server(
         ..Default::default()
     };
 
-    println!("[WebRTC Router] Ready to accept SDP offers via Gateway signaling...");
+    tracing::info!("[WebRTC Router] Ready to accept SDP offers via Gateway signaling...");
     
     let active_channels: Arc<Mutex<HashMap<String, Arc<RTCDataChannel>>>> = Arc::new(Mutex::new(HashMap::new()));
     
@@ -58,7 +57,7 @@ pub async fn start_webrtc_server(
     });
 
     while let Some((client_id, offer_str, reply_tx)) = offer_rx.recv().await {
-        println!("[WebRTC Router] Received SDP offer for {}, generating peer connection...", client_id);
+        tracing::info!("[WebRTC Router] Received SDP offer for {}, generating peer connection...", client_id);
         let api_clone = Arc::clone(&api);
         let config_clone = config.clone();
         let tx_clone = tx.clone();
@@ -71,9 +70,9 @@ pub async fn start_webrtc_server(
             
             // Set the handler for Peer connection state
             peer_connection.on_peer_connection_state_change(Box::new(move |s: RTCPeerConnectionState| {
-                println!("[WebRTC Router] Peer Connection State has changed: {}", s);
+                tracing::info!("[WebRTC Router] Peer Connection State has changed: {}", s);
                 if s == RTCPeerConnectionState::Failed {
-                    println!("[WebRTC Router] Peer Connection has gone to failed exiting");
+                    tracing::info!("[WebRTC Router] Peer Connection has gone to failed exiting");
                 }
                 Box::pin(async {})
             }));
@@ -84,7 +83,7 @@ pub async fn start_webrtc_server(
             peer_connection.on_data_channel(Box::new(move |d: Arc<RTCDataChannel>| {
                 let d_label = d.label().to_owned();
                 let d_id = d.id();
-                println!("[WebRTC Router] New DataChannel '{}' ({})", d_label, d_id);
+                tracing::info!("[WebRTC Router] New DataChannel '{}' ({})", d_label, d_id);
 
                 let client_id_clone = client_id_for_dc.clone();
                 let client_id_clone2 = client_id_for_dc.clone();
@@ -98,7 +97,7 @@ pub async fn start_webrtc_server(
                 });
 
                 d.on_open(Box::new(move || {
-                    println!("[WebRTC Router] Data channel '{}' open for client {}.", d_label, client_id_clone);
+                    tracing::info!("[WebRTC Router] Data channel '{}' open for client {}.", d_label, client_id_clone);
                     Box::pin(async {})
                 }));
 

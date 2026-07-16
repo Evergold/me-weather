@@ -1,4 +1,3 @@
-use wgpu::util::DeviceExt;
 use std::borrow::Cow;
 
 pub mod octree;
@@ -19,19 +18,20 @@ pub fn determine_execution_mode(buffer_size: wgpu::BufferAddress, physical_vram_
     
     if limits_exceeded || is_force_true {
         if is_force_true {
-            println!("[Physics Engine] FORCE_MESHING=True detected. Activating Tiled Compute Mode to join cluster.");
+            tracing::info!("[Physics Engine] FORCE_MESHING=True detected. Activating Tiled Compute Mode to join cluster.");
         } else if is_force_false {
-            println!("[Physics Engine] Grid size exceeds VRAM limits, but FORCE_MESHING=False. Falling back to LOCAL Iterative Tiled Compute Mode without cluster meshing.");
+            tracing::info!("[Physics Engine] Grid size exceeds VRAM limits, but FORCE_MESHING=False. Falling back to LOCAL Iterative Tiled Compute Mode without cluster meshing.");
         } else {
-            println!("[Physics Engine] Grid size exceeds VRAM limits (FORCE_MESHING=Auto). Activating Server Meshing to avoid PCIe bottlenecks.");
+            tracing::info!("[Physics Engine] Grid size exceeds VRAM limits (FORCE_MESHING=Auto). Activating Server Meshing to avoid PCIe bottlenecks.");
         }
         ExecutionMode::Tiled { tile_size: 4096, halo_size: 16, master_grid: None }
     } else {
-        println!("[Physics Engine] Grid fits entirely in VRAM. Single-machine execution is optimal (Server Meshing would artificially introduce network latency).");
+        tracing::info!("[Physics Engine] Grid fits entirely in VRAM. Single-machine execution is optimal (Server Meshing would artificially introduce network latency).");
         ExecutionMode::Monolithic
     }
 }
 
+#[allow(dead_code)]
 pub struct PhysicsSolver {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -44,7 +44,7 @@ pub struct PhysicsSolver {
 impl PhysicsSolver {
     /// Initializes a pure Rust wgpu physics context to execute WGSL atmospheric shaders
     pub async fn new(grid_width: u32, grid_height: u32, gpu_vram_gb: u32, is_headless: bool, force_meshing: String, wgsl_shader: &str) -> Self {
-        println!("[Physics Engine] Initializing native wgpu-rs compute context...");
+        tracing::info!("[Physics Engine] Initializing native wgpu-rs compute context...");
         let instance = wgpu::Instance::default();
 
         let adapter = instance

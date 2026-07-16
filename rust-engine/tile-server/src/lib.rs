@@ -5,10 +5,8 @@ use axum::{
     routing::get,
     Router,
 };
-use image::{GenericImageView, DynamicImage};
+use image::DynamicImage;
 use std::sync::Arc;
-use std::path::PathBuf;
-use tokio::net::TcpListener;
 
 // Application state to hold a loaded coarse map in memory for fast serving
 struct AppState {
@@ -17,7 +15,7 @@ struct AppState {
 }
 
 pub fn build_router() -> Router {
-    println!("[Tile Server] Initializing high-speed Rust tile routes...");
+    tracing::info!("[Tile Server] Initializing high-speed Rust tile routes...");
 
     // Load master coarse maps (simulating the load-on-demand cache)
     let heightmap_filename = std::env::var("HEIGHTMAP_FILENAME").unwrap_or_else(|_| "heightmap_coarse.png".to_string());
@@ -42,7 +40,7 @@ pub fn build_router() -> Router {
 }
 
 async fn serve_tile(
-    Path((z, map_type, x_y)): Path<(u32, String, String)>,
+    Path((_z, map_type, x_y)): Path<(u32, String, String)>,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     // Parse {x}_{y}.png

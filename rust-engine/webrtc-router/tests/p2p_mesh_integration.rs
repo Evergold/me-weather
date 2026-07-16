@@ -5,7 +5,6 @@ use webrtc::api::APIBuilder;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::interceptor::registry::Registry;
 use webrtc::data_channel::data_channel_message::DataChannelMessage;
-use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use tokio::sync::mpsc;
 use std::time::Duration;
 
@@ -83,7 +82,7 @@ async fn test_p2p_mesh_datachannel() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(received) = tokio::time::timeout(Duration::from_secs(2), rx_b.recv()).await.ok().flatten() {
         assert_eq!(received.len(), 16384);
         assert_eq!(received, boundary_data);
-        println!("✅ Server Meshing P2P DataChannel perfectly streamed 16KB boundary over native UDP!");
+        tracing::info!("✅ Server Meshing P2P DataChannel perfectly streamed 16KB boundary over native UDP!");
     } else {
         panic!("P2P DataChannel timeout!");
     }

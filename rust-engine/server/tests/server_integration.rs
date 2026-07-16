@@ -1,5 +1,4 @@
 use tokio;
-use std::time::Duration;
 
 #[tokio::test]
 async fn test_websocket_control_settings() {

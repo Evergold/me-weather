@@ -174,7 +174,7 @@ test.describe('Babylon.js WebGPU Simulation E2E Suite', () => {
       return new Promise((resolve, reject) => {
         // Connect to the control WebSocket for signaling
         const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const wsUrl = `${wsProto}://${window.location.host}/ws/control/e2e_mesh_tester`;
+        const wsUrl = `${wsProto}://127.0.0.1:8000/ws/control/e2e_mesh_tester`;
         const ws = new WebSocket(wsUrl);
 
         let pc;

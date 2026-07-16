@@ -7,10 +7,10 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex as TokioMutex};
-use std::net::SocketAddr;
 pub mod cluster;
 
 // Shared Game State Authority
+#[allow(dead_code)]
 struct AppState {
     tx: broadcast::Sender<String>,
     offer_tx: tokio::sync::mpsc::Sender<(String, String, tokio::sync::oneshot::Sender<String>)>,
@@ -38,9 +38,11 @@ struct ControlMessage {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt::init();
+    
     dotenvy::dotenv().ok(); // Load environment variables from .env file
     
-    println!("[Orchestrator] Booting monolithic Rust backend on port 8000...");
+    tracing::info!("[Orchestrator] Booting monolithic Rust backend on port 8000...");
 
     // Parse configuration from .env
     let pause_on_idle = std::env::var("PAUSE_ON_IDLE").unwrap_or_else(|_| "True".to_string()).eq_ignore_ascii_case("true");
@@ -60,33 +62,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let scylla_uri = std::env::var("SCYLLA_URI").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
     
-    println!("[Database] Attempting to connect to ScyllaDB at {}...", scylla_uri);
+    tracing::info!("[Database] Attempting to connect to ScyllaDB at {}...", scylla_uri);
     let mut db_session_opt = None;
     
     match scylla::client::session_builder::SessionBuilder::new().known_node(&scylla_uri).build().await {
         Ok(session) => {
-            println!("[Database] Successfully connected to ScyllaDB cluster.");
+            tracing::info!("[Database] Successfully connected to ScyllaDB cluster.");
             db_session_opt = Some(session);
         },
         Err(e) => {
-            println!("[Database] Connection failed ({}). Attempting to automatically start ScyllaDB via Docker...", e);
+            tracing::info!("[Database] Connection failed ({}). Attempting to automatically start ScyllaDB via Docker...", e);
             let docker_result = std::process::Command::new("docker")
                 .args(["run", "--name", "scylla-node", "-d", "-p", "9042:9042", "scylladb/scylla:5.4.0"])
                 .output();
                 
             if docker_result.is_ok() {
-                println!("[Database] Docker container started. Waiting 15 seconds for ScyllaDB to initialize...");
+                tracing::info!("[Database] Docker container started. Waiting 15 seconds for ScyllaDB to initialize...");
                 tokio::time::sleep(std::time::Duration::from_secs(15)).await;
                 
                 // Retry connection
                 if let Ok(session) = scylla::client::session_builder::SessionBuilder::new().known_node(&scylla_uri).build().await {
-                    println!("[Database] Successfully auto-started and connected to local ScyllaDB cluster!");
+                    tracing::info!("[Database] Successfully auto-started and connected to local ScyllaDB cluster!");
                     db_session_opt = Some(session);
                 } else {
-                    println!("[Database] Auto-start timed out. Running in isolated single-node mode.");
+                    tracing::info!("[Database] Auto-start timed out. Running in isolated single-node mode.");
                 }
             } else {
-                println!("[Database] Docker is not available. Running in isolated single-node mode.");
+                tracing::info!("[Database] Docker is not available. Running in isolated single-node mode.");
             }
         }
     }
@@ -134,7 +136,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 2. Spawn the UDP WebRTC DataChannel Router natively in a background task
     tokio::spawn(async move {
         if let Err(e) = webrtc_router::start_webrtc_server(webrtc_tx, offer_rx, data_rx).await {
-            eprintln!("[WebRTC] Router crashed: {}", e);
+            tracing::error!("[WebRTC] Router crashed: {}", e);
         }
     });
 
@@ -149,7 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let mut cm = cluster.lock().await;
                     if msg == "CLAIM" {
                         if let Some(tile) = cm.claim_tile(node_id.clone(), None) {
-                            println!("[Gateway] Node {} claimed tile {}", node_id, tile);
+                            tracing::info!("[Gateway] Node {} claimed tile {}", node_id, tile);
                             
                             // Create a dummy float array (e.g. 4096 floats) representing the tile state to send
                             let mut fake_tile_data: Vec<u8> = Vec::with_capacity(4096 * 4);
@@ -158,21 +160,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             
                             // Actually stream the tile float grid down the datachannel!
-                            println!("[Gateway] Streaming {} bytes of tile data to Node {}...", fake_tile_data.len(), node_id);
+                            tracing::info!("[Gateway] Streaming {} bytes of tile data to Node {}...", fake_tile_data.len(), node_id);
                             let _ = data_tx_clone.send((node_id.clone(), fake_tile_data)).await;
                             
                         } else {
-                            println!("[Gateway] Node {} requested tile but none available or throttled", node_id);
+                            tracing::info!("[Gateway] Node {} requested tile but none available or throttled", node_id);
                         }
                     } else if msg.starts_with("COMPLETE:") {
                         let tile_id = msg.trim_start_matches("COMPLETE:");
                         cm.complete_tile(tile_id, &node_id);
-                        println!("[Gateway] Node {} completed tile {}", node_id, tile_id);
+                        tracing::info!("[Gateway] Node {} completed tile {}", node_id, tile_id);
                     }
                 }
             } else {
                 // If it's pure binary data, this is a computed tile coming back from a node!
-                println!("[Gateway] Received {} bytes of computed binary data from Node {}", data.len(), node_id);
+                tracing::info!("[Gateway] Received {} bytes of computed binary data from Node {}", data.len(), node_id);
             }
         }
     });
@@ -215,11 +217,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app = Router::new()
         .merge(gateway_router)
-        .merge(tile_router);
+        .merge(tile_router)
+        .layer(tower_http::cors::CorsLayer::permissive());
 
     // Bind monolithic HTTP server to port 8000
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
-    println!("[Orchestrator] Axum gateway & tile server running on ws://127.0.0.1:8000");
+    tracing::info!("[Orchestrator] Axum gateway & tile server running on ws://127.0.0.1:8000");
     
     axum::serve(listener, app).await.unwrap();
 
@@ -243,7 +246,7 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>, client_id: S
             msg = socket.recv() => {
                 if let Some(Ok(Message::Text(text))) = msg {
                     if let Ok(parsed) = serde_json::from_str::<ControlMessage>(text.as_str()) {
-                        println!("[Gateway] Parsed: {:?}", parsed);
+                        tracing::info!("[Gateway] Parsed: {:?}", parsed);
                         
                         if parsed.msg_type.as_deref() == Some("webrtc_offer") {
                             if let Some(offer) = parsed.sdp {
