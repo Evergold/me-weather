@@ -11,6 +11,10 @@ struct Plane {
 
 struct Frustum {
     planes: array<Plane, 6>,
+    tileCount: u32,
+    padding1: u32,
+    padding2: u32,
+    padding3: u32,
 }
 
 struct AABB {
@@ -33,7 +37,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let index = global_id.x;
     
     // Bounds check
-    if (index >= arrayLength(&tiles)) {
+    if (index >= frustum.tileCount) {
         return;
     }
 
