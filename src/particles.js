@@ -16,7 +16,15 @@ export class WeatherParticles {
   }
   
   createParticleSystem(name, capacity) {
-    // Force CPU ParticleSystem because Babylon.js GPUParticleSystem triggers driver crashes on Lavapipe in Playwright
+    const isHeadless = navigator.userAgent.includes('Headless');
+    if (BABYLON.GPUParticleSystem.IsSupported && !isHeadless) {
+      try {
+        console.log(`[Particles] Creating GPUParticleSystem for ${name} (capacity: ${capacity})`);
+        return new BABYLON.GPUParticleSystem(name, { capacity: capacity }, this.scene);
+      } catch (e) {
+        console.warn(`[Particles] Failed to create GPUParticleSystem for ${name}, falling back to CPU ParticleSystem:`, e);
+      }
+    }
     console.log(`[Particles] Creating CPU ParticleSystem for ${name} (capacity: ${capacity})`);
     return new BABYLON.ParticleSystem(name, capacity, this.scene);
   }
