@@ -20,12 +20,15 @@ pub fn build_router() -> Router {
     println!("[Tile Server] Initializing high-speed Rust tile routes...");
 
     // Load master coarse maps (simulating the load-on-demand cache)
-    let heightmap_path = "../server/assets/heightmap_coarse.png";
-    let normalmap_path = "../server/assets/normalmap_coarse.jpg";
+    let heightmap_filename = std::env::var("HEIGHTMAP_FILENAME").unwrap_or_else(|_| "heightmap_coarse.png".to_string());
+    let normalmap_filename = std::env::var("NORMALMAP_FILENAME").unwrap_or_else(|_| "normalmap_coarse.jpg".to_string());
+    
+    let heightmap_path = format!("../server/assets/{}", heightmap_filename);
+    let normalmap_path = format!("../server/assets/{}", normalmap_filename);
     
     // Fallback to empty 1024x1024 images if files don't exist during testing
-    let coarse_heightmap = image::open(heightmap_path).unwrap_or_else(|_| DynamicImage::new_luma8(1024, 1024));
-    let coarse_normalmap = image::open(normalmap_path).unwrap_or_else(|_| DynamicImage::new_rgb8(1024, 1024));
+    let coarse_heightmap = image::open(&heightmap_path).unwrap_or_else(|_| DynamicImage::new_luma8(1024, 1024));
+    let coarse_normalmap = image::open(&normalmap_path).unwrap_or_else(|_| DynamicImage::new_rgb8(1024, 1024));
 
     let state = Arc::new(AppState {
         coarse_heightmap,
