@@ -2,10 +2,12 @@
 // Licensed under the MIT License (see LICENSE for details)
 
 import * as BABYLON from '@babylonjs/core';
+import { TerrainCuller } from './TerrainCuller.js';
 
 export class WeatherTerrain {
   constructor(scene) {
     this.scene = scene;
+    this.culler = new TerrainCuller(scene.getEngine());
     this.activeTiles = new Map(); // Key: "z_x_y" -> Value: { mesh, material, heightTex, normalTex, flowTex, sps, spsMesh, loaded }
     
     this.terrainWidth = 256;
@@ -277,9 +279,11 @@ export class WeatherTerrain {
     this.treeTemplate.material = treeMat;
   }
   
-  updateTiles(camera, physics) {
-    if (!camera) return;
+  async updateTiles(camera, physics) {
+    if (!camera || this.isUpdatingTiles) return;
+    this.isUpdatingTiles = true;
     
+    try {
     // Choose quadtree zoom level based on camera altitude (radius)
     let z = 0;
     if (camera.radius > 1500) {
@@ -295,34 +299,26 @@ export class WeatherTerrain {
     const tilesCount = Math.pow(2, z);
     const tileSize = 2000.0 / tilesCount;
     
-    // Determine visibility horizon based on zoom focus area
-    let visibilityRadius = 3000.0; // zoom 0 sees the whole continent
-    if (z === 1) visibilityRadius = 1600.0;
-    if (z === 2) visibilityRadius = 900.0;
-    if (z === 3) visibilityRadius = 500.0;
-    
-    const targetX = camera.target.x;
-    const targetZ = camera.target.z;
-    const visibleKeys = new Set();
     const apiHost = `${window.location.hostname}:8000`;
     const apiProtocol = window.location.protocol;
     
-    // Find all tiles inside the visibility radius at target zoom z
+    // Build array of all potential tiles at this zoom level to send to the GPU culler
+    const tilesArray = [];
     for (let x = 0; x < tilesCount; x++) {
       for (let y = 0; y < tilesCount; y++) {
-        const tileCenterX = -1000.0 + (x + 0.5) * tileSize;
-        const tileCenterZ = -1000.0 + (y + 0.5) * tileSize;
+        const tileStartX = -1000.0 + x * tileSize;
+        const tileStartZ = -1000.0 + y * tileSize;
         
-        const dx = tileCenterX - targetX;
-        const dz = tileCenterZ - targetZ;
-        const dist = Math.sqrt(dx * dx + dz * dz);
-        
-        if (dist <= visibilityRadius) {
-          const key = `${z}_${x}_${y}`;
-          visibleKeys.add(key);
-        }
+        tilesArray.push({
+          key: `${z}_${x}_${y}`,
+          min: new BABYLON.Vector3(tileStartX, 0, tileStartZ),
+          max: new BABYLON.Vector3(tileStartX + tileSize, this.uniforms.uScale, tileStartZ + tileSize)
+        });
       }
     }
+    
+    // Offload frustum intersection math to the WebGPU compute shader!
+    const visibleKeys = await this.culler.cullTilesAsync(camera, tilesArray);
     
     // Create new tiles for target zoom z if they don't exist yet
     let allTargetTilesLoaded = true;
@@ -408,6 +404,9 @@ export class WeatherTerrain {
         this.currentZoom = z;
         this.initialTilesLoaded = true;
       });
+    }
+    } finally {
+      this.isUpdatingTiles = false;
     }
   }
   
