@@ -52,7 +52,7 @@ uv pip install -r requirements.txt
 ```
 
 ### 2. Launching in Production Mode
-This builds the client assets (including auto-compiling the WebAssembly Math Engine) and starts the distributed Rust Axum microservices.
+This builds the client assets and starts the distributed Rust Axum microservices.
 
 1.  **Build the Client Assets**:
     At the project root directory:
