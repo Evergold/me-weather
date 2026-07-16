@@ -20,7 +20,7 @@ pub struct PhysicsSolver {
 
 impl PhysicsSolver {
     /// Initializes a pure Rust wgpu physics context to execute WGSL atmospheric shaders
-    pub async fn new(grid_width: u32, grid_height: u32, gpu_vram_gb: u32, is_headless: bool, force_meshing: bool, wgsl_shader: &str) -> Self {
+    pub async fn new(grid_width: u32, grid_height: u32, gpu_vram_gb: u32, is_headless: bool, force_meshing: String, wgsl_shader: &str) -> Self {
         println!("[Physics Engine] Initializing native wgpu-rs compute context...");
         let instance = wgpu::Instance::default();
 
@@ -72,16 +72,23 @@ impl PhysicsSolver {
         let limit_percent = if is_headless { 95 } else { 80 };
         let physical_vram_limit = (gpu_vram_gb as wgpu::BufferAddress) * 1024 * 1024 * 1024 * limit_percent / 100;
         
-        let mode = if buffer_size > 2147483647 || buffer_size > physical_vram_limit || force_meshing {
+        let meshing_upper = force_meshing.to_uppercase();
+        let is_force_true = meshing_upper == "TRUE";
+        let is_force_false = meshing_upper == "FALSE"; // Auto is the default behavior
+        
+        let limits_exceeded = buffer_size > 2147483647 || buffer_size > physical_vram_limit;
+        
+        let mode = if limits_exceeded || is_force_true {
             // Documenting Limits: 
             // 1. The WebGPU specification caps individual storage buffers at ~2GB (2147483647 bytes).
             // 2. We also reserve a dynamic percentage of physical VRAM for the host OS to prevent OOM panics.
-            // For grids exceeding either limit, or if FORCE_MESHING is true, we automatically fall back to streaming chunks iteratively.
-            if force_meshing {
-                println!("[Physics Engine] FORCE_MESHING=true detected. Activating Tiled Compute Mode to join cluster.");
+            
+            if is_force_true {
+                println!("[Physics Engine] FORCE_MESHING=True detected. Activating Tiled Compute Mode to join cluster.");
+            } else if is_force_false {
+                println!("[Physics Engine] Grid size exceeds VRAM limits, but FORCE_MESHING=False. Falling back to LOCAL Iterative Tiled Compute Mode without cluster meshing.");
             } else {
-                println!("[Physics Engine] Grid size exceeds VRAM limits. Falling back to Iterative Tiled Compute Mode.");
-                println!("[Physics Engine] -> OPTIMIZATION WARNING: Server Meshing across multiple nodes is highly recommended to avoid PCIe bottlenecks.");
+                println!("[Physics Engine] Grid size exceeds VRAM limits (FORCE_MESHING=Auto). Activating Server Meshing to avoid PCIe bottlenecks.");
             }
             
             // Halo Size (Ghost Cells) Context:

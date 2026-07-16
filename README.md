@@ -11,7 +11,7 @@ An interactive, GPU-accelerated client-server weather simulator of Middle-earth.
 *   **Server-Side Terrain Map Support**: The server holds and serves the master elevation maps (`heightmap_coarse.png` and `normalmap_coarse.jpg`). It dynamically slices high-res tiles on startup. If assets are missing, the server halts startup to ensure data integrity.
 *   **Unified Client-Server Process**: In production mode, the monolithic Rust Axum server orchestrates the physics simulation and WebSocket telemetry channel on port `8000`, while directly mounting and hosting the compiled Vite client assets (`dist/`) from the same port.
 *   **Iterative Tiled Compute Mode**: If the requested simulation grid exceeds the WebGPU 2GB per-buffer limit or dynamically configured VRAM thresholds, the physics solver seamlessly falls back to streaming 4096x4096 chunked tiles to the GPU sequentially. This completely bypasses VRAM exhaustion crashes while preserving hardware-accelerated speeds for theoretically infinite map sizes.
-*   **Dynamic Server Meshing**: Uses ScyllaDB as a decentralized boundary-registry, allowing multiple physical servers to claim dynamic amounts of 4096x4096 tiles based on their available VRAM. Servers run compute natively in parallel and exchange edge boundary data to seamlessly simulate continents too massive for a single machine. Meshing is enabled automatically when Iterative Tiled Compute Mode activates, or can be forced via the `FORCE_MESHING=True` environment variable for nodes joining specifically to offload compute.
+*   **Dynamic Server Meshing**: Uses ScyllaDB as a decentralized boundary-registry, allowing multiple physical servers to claim dynamic amounts of 4096x4096 tiles based on their available VRAM. Servers run compute natively in parallel and exchange edge boundary data to seamlessly simulate continents too massive for a single machine. Meshing config is controlled via `FORCE_MESHING` (`False` defaults to isolating the node to local compute, `Auto` enables it when VRAM limits are exceeded, `True` forces a node to join the cluster).
 *   **WebGPU Compute Buffer Setup**: Sync-requests Vulkan/EGL adapters and devices natively on the host server via `wgpu-rs`, allocating and uploading simulation buffers for native hardware execution.
 *   **Volumetric 3D Cloud Particles**: Renders 6,000 large, additive-blended vapor points on the client browser. The cloud points float at varying volumetric heights, drift dynamically with local wind vectors, and cluster exclusively in high-humidity areas (moisture $\ge 55\%$) for realistic atmospheric depth.
 *   **Custom Terrain Shader**: Renders a 3D displaced terrain mesh in WebGPU / WebGL 2 (Babylon.js). Toggling the **Moisture overlay** overlays a smooth, royal blue vapor flow on top of the green and rocky geographic terrain colors, matching the prototype visual style.
@@ -97,7 +97,8 @@ You can customize the simulation parameters by editing **`.env`**:
 HEIGHTMAP_FILENAME=heightmap.png
 NORMALMAP_FILENAME=normalmap.png
 
-# Optional: Directory name containing pre-tiled Gaea/World Machine exports (relative to server/assets/)
+# Optional: Directory name containing pre-tiled Gaea/World Machine exports
+# (relative to server/assets/)
 TILED_IMPORT_DIR=gondor_16k_tiled
 
 # Pause physics loop when no clients are connected (True/False)
@@ -119,6 +120,19 @@ HEADLESS=False
 # it automatically triggers Iterative Tiled Compute Mode (slower but supports
 # infinite map sizes).
 GPU_VRAM_GB=8
+
+# Force Dynamic Server Meshing (Auto/True/False).
+# Auto: Automatically enables Server Meshing if the grid exceeds VRAM
+#       limits.
+# True: Forces node to connect to ScyllaDB and sync with cluster, even
+#       if map fits.
+# False: Prevents node from meshing, even if VRAM limits are exceeded
+#        (forces local-only Iterative Tiled Compute when limits exceeded).
+FORCE_MESHING=False
+
+# ScyllaDB node address for server meshing and persistent 5-minute
+# world-state snapshots.
+SCYLLA_URI=127.0.0.1:9042
 ```
 
 ### 🗂️ Tiled Map Import (Gaea / World Machine / Terraform)
