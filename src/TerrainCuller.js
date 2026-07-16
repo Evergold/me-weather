@@ -117,6 +117,14 @@ export class TerrainCuller {
         const frustumPlanes = BABYLON.Frustum.GetPlanes(camera.getTransformationMatrix());
         const visibleKeys = new Set();
         
+        let logFrustum = false;
+        if (!this.hasLoggedFrustum) {
+            console.log(`[CPU Cull] Canvas size: ${camera.getEngine().getRenderWidth()}x${camera.getEngine().getRenderHeight()}`);
+            console.log(`[CPU Cull] First plane: `, frustumPlanes[0].normal.x, frustumPlanes[0].d);
+            this.hasLoggedFrustum = true;
+            logFrustum = true;
+        }
+        
         for (const t of tilesArray) {
             let visible = true;
             for (let p = 0; p < 6; p++) {
@@ -135,6 +143,10 @@ export class TerrainCuller {
             if (visible) {
                 visibleKeys.add(t.key);
             }
+        }
+        
+        if (logFrustum) {
+            console.log(`[CPU Cull] Returning ${visibleKeys.size} visible keys. First key: ${[...visibleKeys][0]}`);
         }
         return visibleKeys;
     }
