@@ -1,6 +1,8 @@
 use wgpu::util::DeviceExt;
 use std::borrow::Cow;
 
+pub mod octree;
+
 pub enum ExecutionMode {
     Monolithic,
     Tiled { tile_size: u32, master_grid: Option<Vec<f32>> },
