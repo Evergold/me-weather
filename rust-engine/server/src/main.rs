@@ -97,6 +97,62 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Scaffold the Keyspace and Table for Server Meshing
         let _ = session.query_unpaged("CREATE KEYSPACE IF NOT EXISTS weather_sim WITH REPLICATION = {'class' : 'SimpleStrategy', 'replication_factor' : 1}", &[]).await;
         let _ = session.query_unpaged("CREATE TABLE IF NOT EXISTS weather_sim.tiles (tile_id text PRIMARY KEY, data blob, last_updated timestamp)", &[]).await;
+        
+        let mut num_snapshots: usize = std::env::var("NUM_SNAPSHOTS")
+            .unwrap_or_else(|_| "2".to_string())
+            .parse()
+            .unwrap_or(2);
+            
+        if num_snapshots < 1 {
+            num_snapshots = 1;
+        }
+            
+        let scylla_api = std::env::var("SCYLLA_API").unwrap_or_else(|_| "http://127.0.0.1:10000".to_string());
+        let api_client = reqwest::Client::new();
+        tokio::spawn(async move {
+            let mut snapshot_tags = std::collections::VecDeque::new();
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(300));
+            
+            interval.tick().await; // Consume immediate tick
+            
+            loop {
+                interval.tick().await;
+                let timestamp = chrono::Utc::now().format("%Y%m%d%H%M%S").to_string();
+                let tag = format!("auto_{}", timestamp);
+                let url = format!("{}/storage_service/snapshots?tag={}", scylla_api, tag);
+                
+                match api_client.post(&url).send().await {
+                    Ok(resp) if resp.status().is_success() => {
+                        tracing::info!("[Database] Created automatic ScyllaDB snapshot: {}", tag);
+                        snapshot_tags.push_back(tag);
+                        
+                        while snapshot_tags.len() > num_snapshots {
+                            if let Some(old_tag) = snapshot_tags.pop_front() {
+                                let del_url = format!("{}/storage_service/snapshots?tag={}", scylla_api, old_tag);
+                                match api_client.delete(&del_url).send().await {
+                                    Ok(del_resp) if del_resp.status().is_success() => {
+                                        tracing::info!("[Database] Pruned old snapshot: {}", old_tag);
+                                    },
+                                    Ok(del_resp) => {
+                                        tracing::warn!("[Database] Failed to prune {}: HTTP {}", old_tag, del_resp.status());
+                                    },
+                                    Err(e) => {
+                                        tracing::error!("[Database] Error pruning {}: {}", old_tag, e);
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    Ok(resp) => {
+                        tracing::warn!("[Database] Failed to create snapshot: HTTP {}", resp.status());
+                    },
+                    Err(e) => {
+                        tracing::error!("[Database] Error creating snapshot: {}", e);
+                    }
+                }
+            }
+        });
+        
         Some(Arc::new(session))
     } else {
         None

@@ -146,9 +146,20 @@ GPU_VRAM_GB=8
 #        (forces local-only Iterative Tiled Compute when limits exceeded).
 FORCE_MESHING=False
 
-# ScyllaDB node address for server meshing and persistent 5-minute
-# world-state snapshots.
+# ScyllaDB Native Node Address (CQL Port: 9042)
+# Used by the Rust physics orchestrator to perform high-speed binary
+# reads/writes for server meshing and tile data.
 SCYLLA_URI=127.0.0.1:9042
+
+# ScyllaDB REST API Address (HTTP Port: 10000)
+# Strictly used for administrative tasks that the CQL driver cannot perform natively,
+# such as triggering and managing automatic world-state snapshots.
+SCYLLA_API=http://127.0.0.1:10000
+
+# Snapshot Management
+# Controls how many 5-minute persistent world-state snapshots are kept
+# in ScyllaDB before older ones are automatically pruned (Minimum: 1).
+NUM_SNAPSHOTS=2
 ```
 
 ### 🗂️ Tiled Map Import (Gaea / World Machine / Terraform)
