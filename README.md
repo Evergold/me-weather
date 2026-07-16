@@ -160,6 +160,14 @@ By default, the client uses the high-performance **WebGPU** rendering pipeline (
 
 Use the following settings to configure native WebGPU on your operating system:
 
+### 🌍 Google Chrome & Microsoft Edge (Windows / macOS / ChromeOS)
+WebGPU is **supported natively and enabled by default** in Chrome and Edge (Version 113+). 
+*   No special flags or configuration are required out-of-the-box on Windows, macOS, and ChromeOS.
+*   **Linux Specific**: Chromium on Linux requires Vulkan. Navigate to `chrome://flags` (or `edge://flags`), search for `#enable-unsafe-webgpu` and `#enable-vulkan`, and set both to **Enabled**.
+
+### 🍎 Safari (macOS & iOS)
+WebGPU is supported natively in **Safari 18+** (macOS Sequoia / iOS 18) and **Safari Technology Preview**.
+*   In older versions (Safari 17), you must explicitly enable it: Go to **Safari > Settings > Advanced**, check "Show Develop menu". Then go to **Develop > Feature Flags**, and check **WebGPU**.
 ### 🦁 Brave Browser (Windows / macOS / Linux)
 Brave's default shields and fingerprinting protections block WebGPU adapter access.
 1.  **Toggle Shields Off**: Click the lion icon in the address bar and toggle **Shields to "Down" (Off)** for `http://localhost:5173` (or `http://localhost:8000`). This stops WebGL warning spam and allows Brave to query WebGPU hardware adapter info.
