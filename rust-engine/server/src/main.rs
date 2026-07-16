@@ -15,6 +15,8 @@ struct AppState {
     tx: broadcast::Sender<String>,
     // Physics engine state for monolithic in-memory dispatches
     physics: physics::PhysicsSolver,
+    // Server-authoritative Hybrid Collider (Octree + Heightmap)
+    collider: physics::collider::WorldCollider,
     // Configuration from .env
     pause_on_idle: bool,
     enable_hydrology: bool,
@@ -40,12 +42,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let enable_hydrology = std::env::var("ENABLE_HYDROLOGY").unwrap_or_else(|_| "True".to_string()).eq_ignore_ascii_case("true");
     let gpu_vram_gb = std::env::var("GPU_VRAM_GB").unwrap_or_else(|_| "8".to_string()).parse::<u32>().unwrap_or(8);
 
+    let heightmap_filename = std::env::var("HEIGHTMAP_FILENAME").unwrap_or_else(|_| "heightmap_coarse.png".to_string());
+    let heightmap_path = format!("../server/assets/{}", heightmap_filename);
+    
     // 1. Initialize the WGPU Physics Engine (in-memory)
     let physics_engine = physics::PhysicsSolver::new(16384, 16384, gpu_vram_gb, "@group(0) @binding(0) var<storage, read_write> data: array<f32>; @compute @workgroup_size(1) fn main() { data[0] = 0.0; }").await;
+    
+    // 2. Initialize the Server-Authoritative Anti-Cheat Collider
+    let collider = physics::collider::WorldCollider::new(&heightmap_path, 2000.0, 2000.0, 250.0);
+    
     let (tx, _rx) = broadcast::channel(100);
     let app_state = Arc::new(AppState { 
         tx,
         physics: physics_engine,
+        collider,
         pause_on_idle,
         enable_hydrology,
         gpu_vram_gb,

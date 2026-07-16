@@ -2,6 +2,7 @@ use wgpu::util::DeviceExt;
 use std::borrow::Cow;
 
 pub mod octree;
+pub mod collider;
 
 pub enum ExecutionMode {
     Monolithic,
