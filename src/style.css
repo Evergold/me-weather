@@ -226,6 +226,8 @@ body {
   border-bottom-color: var(--color-text-gold);
   border-radius: 50%;
   animation: spin-clockwise 3s linear infinite;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 .spinner-ring.inner {
@@ -236,13 +238,17 @@ body {
   border-right-color: var(--color-accent-amber);
   border-radius: 50%;
   animation: spin-counter 2s linear infinite;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 .spinner-core {
-  font-size: 1.5rem;
-  color: var(--color-text-gold-bright);
-  text-shadow: 0 0 10px rgba(212, 175, 55, 0.8);
-  animation: pulse 2s ease-in-out infinite;
+  font-size: 2rem;
+  color: var(--color-text-gold);
+  text-shadow: 0 0 10px var(--color-accent-amber);
+  animation: pulse-glow 2s ease-in-out infinite alternate;
+  will-change: opacity, filter;
+  transform: translateZ(0);
 }
 
 .connecting-zone h3 {
@@ -252,6 +258,46 @@ body {
   margin-bottom: 0.5rem;
   color: var(--color-text-light);
   text-transform: uppercase;
+}
+
+.connecting-zone.finalizing .loading-spinner {
+  opacity: 1;
+  transform: scale(2.5);
+  filter: brightness(2) drop-shadow(0 0 20px var(--color-accent-amber));
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.connecting-zone.finalizing .spinner-ring,
+.connecting-zone.finalizing .spinner-ring.inner {
+  animation-play-state: paused !important;
+  border-color: transparent;
+  border-top-color: #fff;
+  border-bottom-color: #fff;
+  box-shadow: 0 0 30px #fff;
+  transition: all 0.4s ease-out;
+}
+
+.connecting-zone.finalizing .spinner-core {
+  color: #fff;
+  text-shadow: 0 0 40px #fff, 0 0 80px var(--color-accent-amber);
+  transform: scale(1.5);
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.connecting-zone.finalizing h3 {
+  color: #fff;
+  text-shadow: 0 0 20px var(--color-accent-amber), 0 0 40px #fff;
+  transform: scale(1.1) translateY(-15px);
+  letter-spacing: 0.2em;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.connecting-zone.finalizing p,
+.connecting-zone.finalizing .connecting-status,
+.connecting-zone.finalizing .progress-container {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.2s ease-in;
 }
 
 .connecting-zone p {
@@ -1051,4 +1097,45 @@ body {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Progress Bar */
+.progress-container {
+  width: 100%;
+  height: 4px;
+  background: rgba(212, 175, 55, 0.1);
+  border-radius: 2px;
+  margin-top: 1.5rem;
+  overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+}
+
+.progress-bar {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-accent-amber), var(--color-text-gold));
+  border-radius: 2px;
+  transform: scaleX(0);
+  transform-origin: left;
+  will-change: transform;
+  transition: transform 2.5s cubic-bezier(0.25, 0.1, 0.25, 1);
+  position: relative;
+}
+
+.progress-glow {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  background: white;
+  filter: blur(5px);
+  opacity: 0.8;
+  animation: pulse-glow 1s infinite alternate;
+}
+
+@keyframes pulse-glow {
+  0% { opacity: 0.4; }
+  100% { opacity: 1; }
 }
