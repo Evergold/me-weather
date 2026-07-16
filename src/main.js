@@ -83,4 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 3. Initialize UI controller and bind loop callback
   ui = new WeatherUI(physics, renderer, startSimulationLoop);
+  
+  // Start the simulation loop immediately so WebGPU can process compute shader dispatch and readbacks during loading!
+  startSimulationLoop();
 });

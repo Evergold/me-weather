@@ -70,13 +70,14 @@ export class WeatherPhysics {
       this.isTerrainLoaded = true;
       console.log("[Client Physics] Coarse terrain map loaded and mapped.");
     };
-    const apiHost = `${window.location.hostname}:8000`;
-    const apiProtocol = window.location.protocol;
-    img.src = `${apiProtocol}//${apiHost}/assets/heightmap_coarse.png`;
+    img.src = `/assets/heightmap_coarse.png`;
   }
 
   initWebSocket() {
-    const apiHost = `${window.location.hostname}:8000`;
+    // The Linux Firefox instance maps `localhost` to the IPv6 loopback (`::1`),
+    // but the Rust server was only listening on IPv4 (`0.0.0.0` / `127.0.0.1`).
+    const hostname = window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname;
+    const apiHost = `${hostname}:8000`;
     const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
     
     // 1. Initialize Control Socket
@@ -108,7 +109,6 @@ export class WeatherPhysics {
     this.controlWs.onclose = () => {
       this.isConnected = false;
       console.log("[WebSocket Control] Connection lost. Reconnecting in 3s...");
-      this.closeStreamSocket();
       this.closeWebRTC();
       setTimeout(() => this.initWebSocket(), 3000);
     };
@@ -117,38 +117,6 @@ export class WeatherPhysics {
       console.error("[WebSocket Control] Socket error:", err);
     };
 
-    // 2. Initialize Data Stream Socket
-    const streamUrl = `${wsProto}://${apiHost}/ws/stream/${this.clientId}`;
-    console.log(`[WebSocket Stream] Connecting to ${streamUrl}...`);
-    this.streamWs = new WebSocket(streamUrl);
-    this.streamWs.binaryType = 'arraybuffer';
-    
-    this.streamWs.onopen = () => {
-      console.log("[WebSocket Stream] Connection established.");
-    };
-    
-    this.streamWs.onmessage = (event) => {
-      if (event.data instanceof ArrayBuffer) {
-        this.unpackBinaryFrame(event.data);
-      }
-    };
-    
-    this.streamWs.onclose = () => {
-      console.log("[WebSocket Stream] Connection lost.");
-    };
-    
-    this.streamWs.onerror = (err) => {
-      console.error("[WebSocket Stream] Socket error:", err);
-    };
-  }
-
-  closeStreamSocket() {
-    if (this.streamWs) {
-      try {
-        this.streamWs.close();
-      } catch (e) {}
-      this.streamWs = null;
-    }
   }
 
   initWebRTC() {
