@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "gateway",
+    "tile-server",
+    "physics",
+    "webrtc-router",
+    "wasm-math"
+]
+resolver = "2"
