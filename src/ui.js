@@ -102,13 +102,36 @@ export class WeatherUI {
       const isPhysicsReady = this.physics.isTerrainLoaded;
       const isRendererReady = this.renderer.initialTilesLoaded;
       const isSocketReady = this.physics.isConnected;
-
+      
+      let progress = 0;
+      if (isPhysicsReady) progress += 33;
+      if (isSocketReady) progress += 33;
+      if (isRendererReady) progress += 34;
+      
+      const progressBar = document.getElementById('launcher-progress');
+      if (progressBar) {
+        progressBar.style.transform = `scaleX(${progress / 100})`;
+      }
+      if (this.renderer && this.renderer.terrain && this.renderer.terrain.isCompiling) {
+        const cz = document.querySelector('.connecting-zone');
+        if (cz && !cz.classList.contains('finalizing')) {
+          cz.classList.add('finalizing');
+          const title = cz.querySelector('h3');
+          if (title) title.innerText = "Finalizing Terrain...";
+        }
+      }
       // Force launch if it takes longer than 25 seconds as a safety fallback
       if ((isPhysicsReady && isRendererReady && isSocketReady) || elapsed > 25000) {
         clearInterval(checkInterval);
         console.log(`[UI] Launching dashboard. Setup took ${elapsed.toFixed(0)}ms. (Physics: ${isPhysicsReady}, Renderer: ${isRendererReady}, Socket: ${isSocketReady})`);
-        
-        this.launchDashboard();
+        if (elapsed > 25000) {
+          this.launchDashboard();
+        } else {
+          // Give the GPU 2.5 extra seconds to upload the large WebGL textures so they don't pop-in visually 
+          setTimeout(() => {
+            this.launchDashboard();
+          }, 2500);
+        }
       }
     }, 100);
   }
