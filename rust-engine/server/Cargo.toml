@@ -12,3 +12,4 @@ tile-server = { path = "../tile-server" }
 webrtc-router = { path = "../webrtc-router" }
 physics = { path = "../physics" }
 dotenvy = "0.15"
+scylla = "1.7.0"
