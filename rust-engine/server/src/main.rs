@@ -15,6 +15,10 @@ struct AppState {
     tx: broadcast::Sender<String>,
     // Physics engine state for monolithic in-memory dispatches
     physics: physics::PhysicsSolver,
+    // Configuration from .env
+    pause_on_idle: bool,
+    decouple_hydrology: bool,
+    gpu_vram_gb: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -31,12 +35,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     println!("[Orchestrator] Booting monolithic Rust backend on port 8000...");
 
+    // Parse configuration from .env
+    let pause_on_idle = std::env::var("PAUSE_ON_IDLE").unwrap_or_else(|_| "True".to_string()).eq_ignore_ascii_case("true");
+    let decouple_hydrology = std::env::var("DECOUPLE_HYDROLOGY").unwrap_or_else(|_| "False".to_string()).eq_ignore_ascii_case("true");
+    let gpu_vram_gb = std::env::var("GPU_VRAM_GB").unwrap_or_else(|_| "8".to_string()).parse::<u32>().unwrap_or(8);
+
     // 1. Initialize the WGPU Physics Engine (in-memory)
     let physics_engine = physics::PhysicsSolver::new(16384, 16384, "@group(0) @binding(0) var<storage, read_write> data: array<f32>; @compute @workgroup_size(1) fn main() { data[0] = 0.0; }").await;
     let (tx, _rx) = broadcast::channel(100);
     let app_state = Arc::new(AppState { 
         tx,
         physics: physics_engine,
+        pause_on_idle,
+        decouple_hydrology,
+        gpu_vram_gb,
     });
 
     // 2. Spawn the UDP WebRTC DataChannel Router natively in a background task
