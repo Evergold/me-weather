@@ -77,3 +77,6 @@ We maintain strict parity with our original legacy mathematical algorithms. Thes
 *   **`test_weather_physics_instantiation`**: Dynamically loads our true native `weather_compute.wgsl` disk asset to aggressively validate the WGSL syntax and memory binding layouts across the pipeline.
 *   **`test_weather_physics_update` & `test_hydrology_solver`**: Ensure no pipeline panics occur during high-frequency execution cycles.
 *   **`test_cpu_gpu_consistency`**: Verifies absolute GPU determinism. Identical mathematical grid seeds natively routed through our `wgpu` stack must always execute with identical physics results across our entire WebRTC node cluster.
+
+### 4. Node-to-Node P2P Networking
+*   **`test_p2p_mesh_datachannel`**: An async native Rust integration test that validates our true Server-to-Server P2P architecture. It spins up two isolated Rust WebRTC instances (Node A and Node B), mimics passing their cryptographic SDP Offers through the registry, triggers the active dialer `create_data_channel` logic, and successfully negotiates a direct UDP pipeline via STUN/ICE. It mathematically asserts that a 16,384-byte boundary float array is perfectly transmitted and received entirely Peer-to-Peer without passing through a central server or browser.

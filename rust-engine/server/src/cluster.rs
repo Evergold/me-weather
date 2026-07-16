@@ -6,6 +6,7 @@ pub struct NodeMetrics {
     pub average_latency_ms: u64,
     pub tiles_computed: u32,
     pub timeouts: u32,
+    pub sdp_offer: Option<String>,
 }
 
 pub struct ClusterManager {
@@ -28,7 +29,7 @@ impl ClusterManager {
 
     /// Claim a tile for compute. Prioritizes the front of the queue (which may contain rescheduled dropped tiles).
     /// Accounts for node connection latency by throttling how many concurrent tiles a slow node can process.
-    pub fn claim_tile(&mut self, node_id: String) -> Option<String> {
+    pub fn claim_tile(&mut self, node_id: String, sdp_offer: Option<String>) -> Option<String> {
         // Dynamic latency-based scheduling
         let in_flight_for_node = self.in_flight.keys().filter(|(_, n)| *n == node_id).count();
         let mut max_concurrent = 4; // Fast nodes can process up to 4 tiles concurrently
@@ -45,12 +46,28 @@ impl ClusterManager {
             return None; // Node is at its latency-adjusted capacity
         }
 
+        // Update the SDP offer if provided
+        if sdp_offer.is_some() {
+            let metrics = self.node_ledger.entry(node_id.clone()).or_insert(NodeMetrics {
+                average_latency_ms: 0,
+                tiles_computed: 0,
+                timeouts: 0,
+                sdp_offer: None,
+            });
+            metrics.sdp_offer = sdp_offer;
+        }
+
         if let Some(tile) = self.pending_tiles.pop_front() {
             self.in_flight.insert((tile.clone(), node_id), Instant::now());
             Some(tile)
         } else {
             None
         }
+    }
+
+    /// Retrieve the SDP offer for a specific node to establish P2P WebRTC connection
+    pub fn get_node_sdp(&self, node_id: &str) -> Option<String> {
+        self.node_ledger.get(node_id).and_then(|m| m.sdp_offer.clone())
     }
 
     /// Iterates through in-flight tiles, finds any that have exceeded the timeout threshold,
@@ -81,6 +98,7 @@ impl ClusterManager {
                 average_latency_ms: 0,
                 tiles_computed: 0,
                 timeouts: 0,
+                sdp_offer: None,
             });
             metrics.timeouts += 1;
         }
@@ -94,6 +112,7 @@ impl ClusterManager {
                 average_latency_ms: 0,
                 tiles_computed: 0,
                 timeouts: 0,
+                sdp_offer: None,
             });
             
             // Simple moving average
@@ -115,7 +134,7 @@ mod tests {
     fn test_claim_and_complete() {
         let mut cluster = ClusterManager::new(vec!["tile_1".to_string(), "tile_2".to_string()]);
         
-        let tile = cluster.claim_tile("node_A".to_string()).unwrap();
+        let tile = cluster.claim_tile("node_A".to_string(), Some("dummy_sdp".to_string())).unwrap();
         assert_eq!(tile, "tile_1");
         assert_eq!(cluster.in_flight.len(), 1);
         
@@ -131,7 +150,7 @@ mod tests {
         let mut cluster = ClusterManager::new(vec!["tile_1".to_string()]);
         cluster.timeout_duration = Duration::from_millis(10); // super short timeout for test
         
-        cluster.claim_tile("node_B".to_string()).unwrap();
+        cluster.claim_tile("node_B".to_string(), None).unwrap();
         assert_eq!(cluster.pending_tiles.len(), 0);
         
         std::thread::sleep(Duration::from_millis(20));
@@ -145,5 +164,21 @@ mod tests {
         // Node B should have a penalty
         let metrics = cluster.node_ledger.get("node_B").unwrap();
         assert_eq!(metrics.timeouts, 1);
+    }
+
+    #[test]
+    fn test_sdp_offer_registry() {
+        let mut cluster = ClusterManager::new(vec!["tile_1".to_string()]);
+        
+        // Node claims tile with an SDP offer
+        let sdp = "v=0\r\no=- 12345 2 IN IP4 127.0.0.1\r\ns=-\r\n".to_string();
+        cluster.claim_tile("node_C".to_string(), Some(sdp.clone())).unwrap();
+        
+        // Verify we can retrieve it correctly for P2P connection
+        let retrieved_sdp = cluster.get_node_sdp("node_C").unwrap();
+        assert_eq!(retrieved_sdp, sdp);
+        
+        // Unregistered node returns None
+        assert!(cluster.get_node_sdp("node_unknown").is_none());
     }
 }

@@ -148,7 +148,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Some(cluster) = &router_cluster {
                     let mut cm = cluster.lock().await;
                     if msg == "CLAIM" {
-                        if let Some(tile) = cm.claim_tile(node_id.clone()) {
+                        if let Some(tile) = cm.claim_tile(node_id.clone(), None) {
                             println!("[Gateway] Node {} claimed tile {}", node_id, tile);
                             
                             // Create a dummy float array (e.g. 4096 floats) representing the tile state to send
@@ -194,7 +194,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 cm.check_timeouts();
                 
                 // Process up to 1 tile locally per tick to maintain 60 FPS
-                if let Some(tile_id) = cm.claim_tile("local_host".to_string()) {
+                if let Some(tile_id) = cm.claim_tile("local_host".to_string(), None) {
                     // For now, simulate work completion (eventually will call ticker_state.physics.update_tile)
                     cm.complete_tile(&tile_id, "local_host");
                 }
