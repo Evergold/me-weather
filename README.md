@@ -8,18 +8,23 @@ An interactive, GPU-accelerated client-server weather simulator of Middle-earth.
 
 ## ✨ Features
 
-*   **Server-Side Terrain Map Support**: The server holds and serves the master elevation maps (`heightmap_coarse.png` and `normalmap_coarse.jpg`). It dynamically slices high-res tiles on startup. If assets are missing, the server halts startup to ensure data integrity.
-*   **Unified Client-Server Process**: In production mode, the monolithic Rust Axum server orchestrates the physics simulation and WebSocket telemetry channel on port `8000`, while directly mounting and hosting the compiled Vite client assets (`dist/`) from the same port.
-*   **Iterative Tiled Compute Mode**: If the requested simulation grid exceeds the WebGPU 2GB per-buffer limit or dynamically configured VRAM thresholds, the physics solver seamlessly falls back to streaming 4096x4096 chunked tiles to the GPU sequentially. This completely bypasses VRAM exhaustion crashes while preserving hardware-accelerated speeds for theoretically infinite map sizes.
-*   **Dynamic Server Meshing**: Uses ScyllaDB as a decentralized boundary-registry, allowing multiple physical servers to claim dynamic amounts of 4096x4096 tiles based on their available VRAM. Servers run compute natively in parallel and exchange edge boundary data to seamlessly simulate continents too massive for a single machine. Meshing config is controlled via `FORCE_MESHING` (`False` defaults to isolating the node to local compute, `Auto` enables it when VRAM limits are exceeded, `True` forces a node to join the cluster).
-*   **WebGPU Compute Buffer Setup**: Sync-requests Vulkan/EGL adapters and devices natively on the host server via `wgpu-rs`, allocating and uploading simulation buffers for native hardware execution.
-*   **Volumetric 3D Cloud Particles**: Renders 6,000 large, additive-blended vapor points on the client browser. The cloud points float at varying volumetric heights, drift dynamically with local wind vectors, and cluster exclusively in high-humidity areas (moisture $\ge 55\%$) for realistic atmospheric depth.
-*   **Custom Terrain Shader**: Renders a 3D displaced terrain mesh in WebGPU / WebGL 2 (Babylon.js). Toggling the **Moisture overlay** overlays a smooth, royal blue vapor flow on top of the green and rocky geographic terrain colors, matching the prototype visual style.
-*   **Client-Side WebGPU Culling**: Offloads the heavy mathematical burden of frustum chunk visibility culling from the single-threaded JavaScript CPU directly to the GPU via a native WebGPU Compute Shader (`cull.wgsl`), processing thousands of tile bounding boxes in parallel.
-*   **Hybrid (server-authoritative) Collision Model**: Employs a hybrid 2D Heightmap array and 3D Rust Octree collision system on the backend to validate movement in real-time, completely preventing clients from teleporting or flying through the terrain mesh.
-*   **Overhead & Perspective Camera Fitting**: Overhead view dynamically calculates camera heights based on the camera FOV and current viewport aspect ratio to guarantee the 2000x2000 map fits perfectly on resize, while preserving the visibility of the control sidebar.
-*   **Quantized Binary Telemetry**: Streams data over binary WebSockets packed into quantized Float16 ArrayBuffers, reducing network bandwidth and avoiding JSON parsing overhead on the client.
-*   **Landmarks & Custom Pins**: Landmark weather stations render rings at their correct 3D terrain height. Custom user pins can be placed with a right-click and persist across page loads using `localStorage`.
+### 🌍 World & Terrain
+*   **Server-Side Terrain Support**: The backend serves master elevation maps (`heightmap_coarse.png` / `normalmap_coarse.jpg`) and dynamically slices high-res tiles on startup to ensure data integrity.
+*   **Custom Terrain Shader**: Renders a 3D displaced terrain mesh in WebGPU / WebGL 2 (Babylon.js). Toggling the *Moisture overlay* flows smooth royal blue vapor directly over the geographic terrain colors.
+*   **Landmarks & Custom Pins**: Weather stations render 3D rings at their exact terrain elevation. Right-click to place custom map pins that automatically persist across page reloads via `localStorage`.
+
+### 🚀 Performance & Graphics
+*   **Iterative Tiled Compute Mode**: If grid memory exceeds WebGPU limits, the physics solver seamlessly falls back to streaming 4096x4096 chunked tiles sequentially to the GPU—enabling infinitely large maps without VRAM crashes.
+*   **Volumetric 3D Clouds**: Renders 6,000 additive-blended vapor points that drift dynamically with local wind vectors and cluster realistically in high-humidity zones (moisture $\ge 55\%$).
+*   **Client-Side WebGPU Culling**: Offloads frustum chunk visibility math from the CPU to a native WebGPU Compute Shader (`cull.wgsl`), processing thousands of tile bounding boxes in parallel.
+*   **Dynamic Camera Fitting**: Overhead view dynamically recalculates camera height based on FOV and viewport aspect ratio, guaranteeing the massive map perfectly fits on resize without UI overlap.
+
+### ⚡ Networking & Backend Architecture
+*   **Unified Client-Server Process**: A monolithic Rust Axum server orchestrates the entire physics simulation, WebSockets, and natively hosts the compiled Vite client assets from a single port.
+*   **WebGPU Native Compute (`wgpu-rs`)**: Sync-requests Vulkan/EGL adapters natively on the host server, directly executing atmospheric compute shaders on backend GPU hardware with zero overhead.
+*   **Dynamic Server Meshing**: Uses ScyllaDB as a decentralized boundary-registry. Multiple physical servers can dynamically claim tiles based on their available VRAM, natively executing compute in parallel and exchanging edge boundary data to simulate entire continents.
+*   **Quantized Binary Telemetry**: Streams data over binary WebSockets (and UDP WebRTC DataChannels) packed tightly into quantized Float16 ArrayBuffers, drastically cutting bandwidth and eliminating JSON parsing stalls.
+*   **Server-Authoritative Collision**: Employs a hybrid 2D heightmap array and 3D Rust Octree collision system to mathematically validate all movement in real-time, preventing clients from cheating or teleporting.
 
 ---
 
