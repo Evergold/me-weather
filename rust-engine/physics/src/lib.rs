@@ -20,7 +20,7 @@ pub struct PhysicsSolver {
 
 impl PhysicsSolver {
     /// Initializes a pure Rust wgpu physics context to execute WGSL atmospheric shaders
-    pub async fn new(grid_width: u32, grid_height: u32, gpu_vram_gb: u32, is_headless: bool, wgsl_shader: &str) -> Self {
+    pub async fn new(grid_width: u32, grid_height: u32, gpu_vram_gb: u32, is_headless: bool, force_meshing: bool, wgsl_shader: &str) -> Self {
         println!("[Physics Engine] Initializing native wgpu-rs compute context...");
         let instance = wgpu::Instance::default();
 
@@ -72,13 +72,17 @@ impl PhysicsSolver {
         let limit_percent = if is_headless { 95 } else { 80 };
         let physical_vram_limit = (gpu_vram_gb as wgpu::BufferAddress) * 1024 * 1024 * 1024 * limit_percent / 100;
         
-        let mode = if buffer_size > 2147483647 || buffer_size > physical_vram_limit {
+        let mode = if buffer_size > 2147483647 || buffer_size > physical_vram_limit || force_meshing {
             // Documenting Limits: 
             // 1. The WebGPU specification caps individual storage buffers at ~2GB (2147483647 bytes).
             // 2. We also reserve a dynamic percentage of physical VRAM for the host OS to prevent OOM panics.
-            // For grids exceeding either limit, we automatically fall back to streaming chunks iteratively.
-            println!("[Physics Engine] Grid size exceeds VRAM limits. Falling back to Iterative Tiled Compute Mode.");
-            println!("[Physics Engine] -> OPTIMIZATION WARNING: Server Meshing across multiple nodes is highly recommended to avoid PCIe bottlenecks.");
+            // For grids exceeding either limit, or if FORCE_MESHING is true, we automatically fall back to streaming chunks iteratively.
+            if force_meshing {
+                println!("[Physics Engine] FORCE_MESHING=true detected. Activating Tiled Compute Mode to join cluster.");
+            } else {
+                println!("[Physics Engine] Grid size exceeds VRAM limits. Falling back to Iterative Tiled Compute Mode.");
+                println!("[Physics Engine] -> OPTIMIZATION WARNING: Server Meshing across multiple nodes is highly recommended to avoid PCIe bottlenecks.");
+            }
             
             // Halo Size (Ghost Cells) Context:
             // 16 pixels is sufficient for most advection/velocity bounds (e.g. winds at 100m/s crossing
