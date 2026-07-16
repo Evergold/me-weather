@@ -9,8 +9,9 @@ use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::interceptor::registry::Registry;
+use tokio::sync::mpsc;
 
-pub async fn start_webrtc_server() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn start_webrtc_server(tx: mpsc::Sender<(String, String)>) -> Result<(), Box<dyn std::error::Error>> {
     println!("[WebRTC Router] Booting massively parallel Rust WebRTC router...");
 
     // Create a MediaEngine object to configure the supported codecs
@@ -59,11 +60,16 @@ pub async fn start_webrtc_server() -> Result<(), Box<dyn std::error::Error>> {
             Box::pin(async {})
         }));
 
+        let tx_clone = tx.clone();
         let d2 = Arc::clone(&d);
         d.on_message(Box::new(move |msg: DataChannelMessage| {
             let msg_str = String::from_utf8(msg.data.to_vec()).unwrap_or_else(|_| "Binary data".to_string());
             println!("[WebRTC Router] Message from DataChannel '{}': '{}'", d2.label(), msg_str);
-            Box::pin(async {})
+            let d_label = d2.label().to_string();
+            let tx2 = tx_clone.clone();
+            Box::pin(async move {
+                let _ = tx2.send((d_label, msg_str)).await;
+            })
         }));
 
         Box::pin(async {})

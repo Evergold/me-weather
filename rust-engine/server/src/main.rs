@@ -6,21 +6,18 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Mutex as TokioMutex};
 use std::net::SocketAddr;
 pub mod cluster;
 
 // Shared Game State Authority
 struct AppState {
-    // Channel for broadcasting state changes (season, time) to all active player WebSockets
     tx: broadcast::Sender<String>,
-    // Physics engine state for monolithic in-memory dispatches
     physics: physics::PhysicsSolver,
-    // Server-authoritative Hybrid Collider (Octree + Heightmap)
     collider: physics::collider::WorldCollider,
     // ScyllaDB Session for Dynamic Server Meshing & Persistence
     db: Option<Arc<scylla::client::session::Session>>,
-    // Configuration from .env
+    cluster: Option<Arc<TokioMutex<cluster::ClusterManager>>>,
     pause_on_idle: bool,
     enable_hydrology: bool,
     gpu_vram_gb: u32,
@@ -98,21 +95,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
+    let mut cluster_opt = None;
+    if let physics::ExecutionMode::Tiled { .. } = physics_engine.mode {
+        let mut tiles = Vec::new();
+        // 16384x16384 map, 4096x4096 tiles -> 4x4 grid
+        for x in 0..4 {
+            for y in 0..4 {
+                tiles.push(format!("tile_4096_{}_{}", x, y));
+            }
+        }
+        cluster_opt = Some(Arc::new(TokioMutex::new(cluster::ClusterManager::new(tiles))));
+    }
+
     let (tx, _rx) = broadcast::channel(100);
     let app_state = Arc::new(AppState { 
         tx,
         physics: physics_engine,
         collider,
         db: db_session,
+        cluster: cluster_opt,
         pause_on_idle,
         enable_hydrology,
         gpu_vram_gb,
     });
 
+    let (webrtc_tx, mut webrtc_rx) = tokio::sync::mpsc::channel::<(String, String)>(100);
+
     // 2. Spawn the UDP WebRTC DataChannel Router natively in a background task
     tokio::spawn(async move {
-        if let Err(e) = webrtc_router::start_webrtc_server().await {
+        if let Err(e) = webrtc_router::start_webrtc_server(webrtc_tx).await {
             eprintln!("[WebRTC] Router crashed: {}", e);
+        }
+    });
+
+    // Handle incoming WebRTC cluster commands
+    let router_cluster = app_state.cluster.clone();
+    tokio::spawn(async move {
+        while let Some((node_id, msg)) = webrtc_rx.recv().await {
+            if let Some(cluster) = &router_cluster {
+                let mut cm = cluster.lock().await;
+                if msg == "CLAIM" {
+                    if let Some(tile) = cm.claim_tile(node_id.clone()) {
+                        println!("[Gateway] Node {} claimed tile {}", node_id, tile);
+                        // Future: Actually stream the tile float grid down the datachannel
+                    } else {
+                        println!("[Gateway] Node {} requested tile but none available or throttled", node_id);
+                    }
+                } else if msg.starts_with("COMPLETE:") {
+                    let tile_id = msg.trim_start_matches("COMPLETE:");
+                    cm.complete_tile(tile_id, &node_id);
+                    println!("[Gateway] Node {} completed tile {}", node_id, tile_id);
+                }
+            }
         }
     });
 
@@ -128,9 +162,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 continue;
             }
 
-            // Note: In the future, we will use ticker_state.enable_hydrology 
-            // to conditionally skip the moisture shader passes here!
-            ticker_state.physics.update(16, 16);
+            if let Some(cluster) = &ticker_state.cluster {
+                let mut cm = cluster.lock().await;
+                cm.check_timeouts();
+                
+                // Process up to 1 tile locally per tick to maintain 60 FPS
+                if let Some(tile_id) = cm.claim_tile("local_host".to_string()) {
+                    // For now, simulate work completion (eventually will call ticker_state.physics.update_tile)
+                    cm.complete_tile(&tile_id, "local_host");
+                }
+            } else {
+                // Note: In the future, we will use ticker_state.enable_hydrology 
+                // to conditionally skip the moisture shader passes here!
+                ticker_state.physics.update(16, 16);
+            }
         }
     });
 
