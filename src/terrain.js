@@ -72,10 +72,10 @@ export class WeatherTerrain {
           ((tilesCount - 1.0 - uTileOffset.y) + uv.y) * uTileScale
         );
         
-        // GPU-based Geomorphing (lerps height from prev to target to prevent LOD pops)
-        float hTarget = textureLod(tHeight, uv, 0.0).r;
-        float hPrev = textureLod(tHeightPrev, vUvGlobal, 0.0).r;
-        float height = mix(hPrev, hTarget, uMorphProgress);
+        // Disable flawed z=0 geomorphing to prevent visible popping and melting
+        vec2 clampedUv = clamp(uv, 0.002, 0.998);
+        float hTarget = textureLod(tHeight, clampedUv, 0.0).r;
+        float height = hTarget;
         vHeight = height;
         
         vec3 pos = position;
@@ -84,7 +84,7 @@ export class WeatherTerrain {
         vec4 worldPos = world * vec4(pos, 1.0);
         vPosition = worldPos.xyz;
         
-        vec3 n = textureLod(tNormal, uv, 0.0).rgb * 2.0 - 1.0;
+        vec3 n = textureLod(tNormal, clampedUv, 0.0).rgb * 2.0 - 1.0;
         vNormal = normalize((world * vec4(n, 0.0)).xyz);
         
         gl_Position = worldViewProjection * vec4(pos, 1.0);
@@ -119,7 +119,8 @@ export class WeatherTerrain {
         vec3 normal = normalize(vNormal);
         
         // Sample static hydrology flowmap: R/G are X/Y slope directions, B is flow accumulation (riverbed width)
-        vec3 flowData = textureLod(tFlow, vUv, 0.0).rgb;
+        vec2 clampedUv = clamp(vUv, 0.002, 0.998);
+        vec3 flowData = texture2D(tFlow, clampedUv).rgb;
         vec2 flowDir = normalize(flowData.rg * 2.0 - 1.0 + 1e-5);
         float flowStrength = flowData.b;
         
@@ -135,9 +136,9 @@ export class WeatherTerrain {
         vec2 glacierOffset = flowDir * fract(uTime * 0.002) * 0.15;
         
         // Sample normal maps at top-level (uniform control flow) to satisfy WebGPU/WGSL requirements
-        vec3 n1 = textureLod(tNormal, vUv - uvOffset1, 0.0).rgb * 2.0 - 1.0;
-        vec3 n2 = textureLod(tNormal, vUv - uvOffset2, 0.0).rgb * 2.0 - 1.0;
-        vec3 nGlacier = textureLod(tNormal, vUv - glacierOffset, 0.0).rgb * 2.0 - 1.0;
+        vec3 n1 = texture2D(tNormal, clamp(vUv - uvOffset1, 0.002, 0.998)).rgb * 2.0 - 1.0;
+        vec3 n2 = texture2D(tNormal, clamp(vUv - uvOffset2, 0.002, 0.998)).rgb * 2.0 - 1.0;
+        vec3 nGlacier = texture2D(tNormal, clamp(vUv - glacierOffset, 0.002, 0.998)).rgb * 2.0 - 1.0;
 
         // Rivers are carved where flow accumulation is high (Blue channel > 0.15)
         bool isWaterBody = false;
@@ -162,11 +163,9 @@ export class WeatherTerrain {
 
         // Sample weather data using global UV coordinates across the entire Middle-earth grid,
         // adjusting if focused on a high-resolution regional chunk.
-        vec2 weatherUv = vUvGlobal;
-        if (uIsZoomed > 0.5) {
-          weatherUv = (vUvGlobal - uWeatherOffset) / uWeatherScale;
-        }
-        vec4 wData = textureLod(tWeather, clamp(weatherUv, 0.0, 1.0), 0.0);
+        vec2 weatherUv = vec2(vUvGlobal.x * uWeatherScale + uWeatherOffset.x, 
+                              vUvGlobal.y * uWeatherScale + uWeatherOffset.y);
+        vec4 wData = texture2D(tWeather, clamp(weatherUv, 0.0, 1.0));
         
         float temp = wData.r * 70.0 - 20.0;
         float moist = wData.g;
@@ -372,38 +371,37 @@ export class WeatherTerrain {
       }
       
       // 2. Wait for shaders to be fully compiled asynchronously before swapping
-      Promise.all(compilationPromises).then(() => {
-        this.morphStartTime = performance.now();
-        this.uniforms.uMorphProgress = 0.0;
+      await Promise.all(compilationPromises);
+      this.morphStartTime = performance.now();
+      this.uniforms.uMorphProgress = 0.0;
+      
+      const keysToDelete = [];
+      for (const [key, tile] of this.activeTiles.entries()) {
+        const parts = key.split("_");
+        const tileZ = parseInt(parts[0]);
         
-        const keysToDelete = [];
-        for (const [key, tile] of this.activeTiles.entries()) {
-          const parts = key.split("_");
-          const tileZ = parseInt(parts[0]);
-          
-          if (tileZ !== z || !visibleKeys.has(key)) {
-            if (tile.mesh) tile.mesh.dispose();
-            if (tile.material) tile.material.dispose();
-            if (tile.heightTex) tile.heightTex.dispose();
-            if (tile.normalTex) tile.normalTex.dispose();
-            if (tile.flowTex) tile.flowTex.dispose();
-            if (tile.sps) tile.sps.dispose();
-            if (tile.spsMesh) {
-              if (this.scene.metadata && this.scene.metadata.shadowGenerator) {
-                this.scene.metadata.shadowGenerator.removeShadowCaster(tile.spsMesh);
-              }
-              tile.spsMesh.dispose();
+        if (tileZ !== z || !visibleKeys.has(key)) {
+          if (tile.mesh) tile.mesh.dispose();
+          if (tile.material) tile.material.dispose();
+          if (tile.heightTex) tile.heightTex.dispose();
+          if (tile.normalTex) tile.normalTex.dispose();
+          if (tile.flowTex) tile.flowTex.dispose();
+          if (tile.sps) tile.sps.dispose();
+          if (tile.spsMesh) {
+            if (this.scene.metadata && this.scene.metadata.shadowGenerator) {
+              this.scene.metadata.shadowGenerator.removeShadowCaster(tile.spsMesh);
             }
-            keysToDelete.push(key);
+            tile.spsMesh.dispose();
           }
+          keysToDelete.push(key);
         }
-        for (const key of keysToDelete) {
-          this.activeTiles.delete(key);
-        }
-        
-        this.currentZoom = z;
-        this.initialTilesLoaded = true;
-      });
+      }
+      for (const key of keysToDelete) {
+        this.activeTiles.delete(key);
+      }
+      
+      this.currentZoom = z;
+      this.initialTilesLoaded = true;
     }
     } finally {
       this.isUpdatingTiles = false;
@@ -426,6 +424,7 @@ export class WeatherTerrain {
       this.scene
     );
     mesh.receiveShadows = true;
+    mesh.alwaysSelectAsActiveMesh = true;
     
     // Place tile into correct grid coordinate slot in world space
     const posX = -1000.0 + x * tileSize + tileSize / 2.0;
@@ -512,8 +511,9 @@ export class WeatherTerrain {
     };
     
     const serverY = tilesCount - 1 - y;
+    const cacheBuster = "?v=2";
     
-    const heightUrl = `${apiProtocol}//${apiHost}/tiles/${z}/height/${x}_${serverY}.png`;
+    const heightUrl = `/assets/tiles/${z}/height/${x}_${serverY}.png${cacheBuster}`;
     const heightTex = new BABYLON.Texture(
       heightUrl,
       this.scene,
@@ -526,7 +526,7 @@ export class WeatherTerrain {
     heightTex.wrapU = BABYLON.Texture.CLAMP_ADDRESSMODE;
     heightTex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
     
-    const normalUrl = `${apiProtocol}//${apiHost}/tiles/${z}/normal/${x}_${serverY}.png`;
+    const normalUrl = `/assets/tiles/${z}/normal/${x}_${serverY}.png${cacheBuster}`;
     const normalTex = new BABYLON.Texture(
       normalUrl,
       this.scene,
@@ -539,7 +539,7 @@ export class WeatherTerrain {
     normalTex.wrapU = BABYLON.Texture.CLAMP_ADDRESSMODE;
     normalTex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
     
-    const flowUrl = `${apiProtocol}//${apiHost}/tiles/${z}/flow/${x}_${serverY}.png`;
+    const flowUrl = `/assets/tiles/${z}/flow/${x}_${serverY}.png${cacheBuster}`;
     const flowTex = new BABYLON.Texture(
       flowUrl,
       this.scene,
@@ -763,7 +763,8 @@ export class WeatherTerrain {
   loadCoarseTextures() {
     const apiHost = `${window.location.hostname}:8000`;
     const apiProtocol = window.location.protocol;
-    const coarseUrl = `${apiProtocol}//${apiHost}/assets/heightmap_coarse.png`;
+    const cacheBuster = `?v=2`;
+    const coarseUrl = `/assets/tiles/0/height/0_0.png${cacheBuster}`;
     this.coarseHeightTex = new BABYLON.Texture(
       coarseUrl,
       this.scene,
