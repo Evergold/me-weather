@@ -78,8 +78,10 @@ impl PhysicsSolver {
             // 2. We also reserve a dynamic percentage of physical VRAM for the host OS to prevent OOM panics.
             // For grids exceeding either limit, we automatically fall back to streaming chunks iteratively.
             println!("[Physics Engine] Grid size exceeds VRAM limits. Falling back to Iterative Tiled Compute Mode.");
+            println!("[Physics Engine] -> OPTIMIZATION WARNING: Server Meshing across multiple nodes is highly recommended to avoid PCIe bottlenecks.");
             ExecutionMode::Tiled { tile_size: 4096, master_grid: None }
         } else {
+            println!("[Physics Engine] Grid fits entirely in VRAM. Single-machine execution is optimal (Server Meshing would artificially introduce network latency).");
             ExecutionMode::Monolithic
         };
 
