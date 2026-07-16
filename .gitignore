@@ -35,6 +35,7 @@ dist/
 server/.venv/
 server/venv/
 server/__pycache__/
+.pytest_cache/
 *.pyc
 
 # Server assets (ignore contents but keep folder)
