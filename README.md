@@ -106,7 +106,15 @@ ENABLE_HYDROLOGY=True
 # Heights (cell) Installation Path
 HEIGHTS_PATH="assets"
 
-# GPU VRAM hint in GB (defaults to 8, used to prevent WebGPU OutOfMemory crashes on large maps)
+# Run the simulation in headless mode (no OS GUI overhead).
+# True sets the Iterative Tiled Compute Mode threshold to 95% of VRAM,
+# False lowers it to 80% to prevent Desktop Environment crashes.
+HEADLESS=False
+
+# GPU VRAM limit in GB.
+# If the simulation buffer exceeds the threshold (or WebGPU 2GB per-buffer limit),
+# it automatically triggers Iterative Tiled Compute Mode (slower but supports
+# infinite map sizes).
 GPU_VRAM_GB=8
 ```
 

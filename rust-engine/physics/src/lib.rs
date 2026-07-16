@@ -20,7 +20,7 @@ pub struct PhysicsSolver {
 
 impl PhysicsSolver {
     /// Initializes a pure Rust wgpu physics context to execute WGSL atmospheric shaders
-    pub async fn new(grid_width: u32, grid_height: u32, gpu_vram_gb: u32, wgsl_shader: &str) -> Self {
+    pub async fn new(grid_width: u32, grid_height: u32, gpu_vram_gb: u32, is_headless: bool, wgsl_shader: &str) -> Self {
         println!("[Physics Engine] Initializing native wgpu-rs compute context...");
         let instance = wgpu::Instance::default();
 
@@ -69,12 +69,13 @@ impl PhysicsSolver {
         // Initialize empty state buffer
         let buffer_size = (grid_width * grid_height * 4) as wgpu::BufferAddress; // 1 float = 4 bytes
         
-        let physical_vram_limit = (gpu_vram_gb as wgpu::BufferAddress) * 1024 * 1024 * 1024 * 9 / 10;
+        let limit_percent = if is_headless { 95 } else { 80 };
+        let physical_vram_limit = (gpu_vram_gb as wgpu::BufferAddress) * 1024 * 1024 * 1024 * limit_percent / 100;
         
         let mode = if buffer_size > 2147483647 || buffer_size > physical_vram_limit {
             // Documenting Limits: 
-            // 1. The WebGPU specification caps storage buffers at ~2GB (2147483647 bytes).
-            // 2. We also reserve 10% of physical VRAM for the host OS to prevent OOM panics.
+            // 1. The WebGPU specification caps individual storage buffers at ~2GB (2147483647 bytes).
+            // 2. We also reserve a dynamic percentage of physical VRAM for the host OS to prevent OOM panics.
             // For grids exceeding either limit, we automatically fall back to streaming chunks iteratively.
             println!("[Physics Engine] Grid size exceeds VRAM limits. Falling back to Iterative Tiled Compute Mode.");
             ExecutionMode::Tiled { tile_size: 4096, master_grid: None }
