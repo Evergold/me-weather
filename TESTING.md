@@ -55,15 +55,21 @@ The Rust backend engine (`rust-engine/`) is tested using native `cargo test` sui
 
 ### Running the Backend Suite
 ```bash
-cd rust-engine/physics
-cargo test
+cd rust-engine/
+cargo test --all-targets
 ```
 
-### Automated Backend Test Coverage
+### 1. Core Physics Execution Logic
 The suite actively asserts the logic of the `ExecutionMode` engine in `physics/src/lib.rs`:
+*   **`test_physics_solver_compiles`**: Verifies that the native WebGPU pipeline and `wgpu` module structure compiles correctly even in a headless CI environment without an active display adapter (vulkan/metal).
+*   **`test_meshing_mode_logic`**: Exhaustively tests the `determine_execution_mode` tri-state branch. It mathematically guarantees the engine correctly falls back to `Tiled` compute when huge buffers exceed VRAM limits, and strictly respects the `FORCE_MESHING` environment overrides (Auto/True/False). This ensures that server meshing and Iterative Tiled Compute mode fail-safes trigger exactly when expected, preventing out-of-memory crashes on massive maps.
 
-1.  **`test_physics_solver_compiles`**
-    *   **What it does:** Verifies that the native WebGPU pipeline and `wgpu` module structure compiles correctly even in a headless CI environment without an active display adapter (vulkan/metal).
-2.  **`test_meshing_mode_logic`**
-    *   **What it does:** Exhaustively tests the `determine_execution_mode` tri-state branch. It mathematically guarantees the engine correctly falls back to `Tiled` compute when huge buffers exceed VRAM limits, and strictly respects the `FORCE_MESHING` environment overrides (Auto/True/False).
-    *   **Why we automate it:** This ensures that server meshing and Iterative Tiled Compute mode fail-safes trigger exactly when expected, preventing out-of-memory crashes on massive maps.
+### 2. Server Meshing & Database Integration
+*   **`test_scylladb_meshing_registry`**: Boots up a full, real ScyllaDB docker container dynamically via `testcontainers` to test live interactions. It verifies that we can correctly negotiate, claim, serialize, and read/write raw blob buffers (`Vec<u8>`) to the `weather_sim.tiles` table.
+
+### 3. GPU Computation & Engine Integration
+We maintain strict parity with our original legacy mathematical algorithms. These tests run directly through our async `tokio` runtime to verify correctness:
+*   **`test_websocket_control_settings`**: Verifies that our native Axum WebSockets flawlessly parse and strictly map to the legacy JSON configuration API.
+*   **`test_weather_physics_instantiation`**: Dynamically loads our true native `weather_compute.wgsl` disk asset to aggressively validate the WGSL syntax and memory binding layouts across the pipeline.
+*   **`test_weather_physics_update` & `test_hydrology_solver`**: Ensure no pipeline panics occur during high-frequency execution cycles.
+*   **`test_cpu_gpu_consistency`**: Verifies absolute GPU determinism. Identical mathematical grid seeds natively routed through our `wgpu` stack must always execute with identical physics results across our entire WebRTC node cluster.
