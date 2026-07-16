@@ -225,14 +225,35 @@ export class WeatherPhysics {
 
   startPlayerSyncLoop() {
     this.stopPlayerSyncLoop();
+    this.lastSentPosition = { x: null, y: null, z: null, rot: null };
+    
     this.playerSyncInterval = setInterval(() => {
       if (this.dataChannel && this.dataChannel.readyState === "open") {
+        const p = this.playerPosition;
+        const lp = this.lastSentPosition;
+        
+        // Delta Culling: Only send if moved/rotated by at least 0.001 units
+        if (lp.x !== null) {
+            const dx = Math.abs((p.x || 0) - lp.x);
+            const dy = Math.abs((p.y || 0) - lp.y);
+            const dz = Math.abs((p.z || 0) - lp.z);
+            const drot = Math.abs((p.rot || 0) - lp.rot);
+            if (dx < 0.001 && dy < 0.001 && dz < 0.001 && drot < 0.001) {
+                return; // Has not moved, skip network send (Zero-Idle Bandwidth)
+            }
+        }
+        
+        lp.x = p.x || 0;
+        lp.y = p.y || 0;
+        lp.z = p.z || 0;
+        lp.rot = p.rot || 0;
+
         const buffer = new ArrayBuffer(16);
         const dv = new DataView(buffer);
-        dv.setFloat32(0, this.playerPosition.x || 0.0, true);
-        dv.setFloat32(4, this.playerPosition.y || 0.0, true);
-        dv.setFloat32(8, this.playerPosition.z || 0.0, true);
-        dv.setFloat32(12, this.playerPosition.rot || 0.0, true);
+        dv.setFloat32(0, lp.x, true);
+        dv.setFloat32(4, lp.y, true);
+        dv.setFloat32(8, lp.z, true);
+        dv.setFloat32(12, lp.rot, true);
         this.dataChannel.send(buffer);
       }
     }, 1000 / 30); // 30 FPS

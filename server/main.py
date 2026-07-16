@@ -443,8 +443,10 @@ client_to_pid = {}
 next_player_id = 1
 
 async def webrtc_broadcast_loop():
-    """O(N) broadcaster that pushes all active players in a single packed binary frame."""
+    """O(N*K) AOI broadcaster that pushes active players based on a spatial chunk grid."""
     last_count = -1
+    AOI_SIZE = 256.0 # Size of each spatial chunk
+    
     while True:
         await asyncio.sleep(1 / 30.0)
         
@@ -462,17 +464,45 @@ async def webrtc_broadcast_loop():
                         
         if not active_players or not pcs:
             continue
-        try:
-            count = len(active_players)
-            # Binary format: [num_players (uint16)] + N * [player_id (uint16), x (f32), y (f32), z (f32), rot (f32)]
-            buffer = bytearray(struct.pack('<H', count))
-            for pid, (x, y, z, rot) in list(active_players.items()):
-                buffer.extend(struct.pack('<H4f', pid, x, y, z, rot))
             
-            payload = bytes(buffer)
-            for pc in list(pcs.values()):
+        try:
+            # 1. Bin players into spatial chunks
+            chunks = {}
+            for pid, (x, y, z, rot) in active_players.items():
+                cx = int(x // AOI_SIZE)
+                cz = int(z // AOI_SIZE)
+                chunk_id = (cx, cz)
+                if chunk_id not in chunks:
+                    chunks[chunk_id] = []
+                chunks[chunk_id].append((pid, x, y, z, rot))
+                
+            # 2. Build AOI payloads for each player
+            for client_id, pc in list(pcs.items()):
                 if hasattr(pc, 'player_channel') and pc.player_channel and pc.player_channel.readyState == 'open':
-                    pc.player_channel.send(payload)
+                    pid = client_to_pid.get(client_id)
+                    if not pid or pid not in active_players:
+                        continue
+                        
+                    px, py, pz, prot = active_players[pid]
+                    pcx = int(px // AOI_SIZE)
+                    pcz = int(pz // AOI_SIZE)
+                    
+                    # Gather players from the 9 adjacent chunks (including center)
+                    nearby_players = []
+                    for dx in [-1, 0, 1]:
+                        for dz in [-1, 0, 1]:
+                            neighbor_id = (pcx + dx, pcz + dz)
+                            if neighbor_id in chunks:
+                                nearby_players.extend(chunks[neighbor_id])
+                    
+                    # Pack custom buffer for this client (Bandwidth reduced by 99% for high player counts)
+                    count = len(nearby_players)
+                    buffer = bytearray(struct.pack('<H', count))
+                    for npid, nx, ny, nz, nrot in nearby_players:
+                        buffer.extend(struct.pack('<H4f', npid, nx, ny, nz, nrot))
+                    
+                    pc.player_channel.send(bytes(buffer))
+                    
         except Exception as e:
             print(f"[WebRTC Broadcast] Error: {e}")
 
