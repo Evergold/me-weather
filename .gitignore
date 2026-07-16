@@ -49,3 +49,6 @@ SSG_U25_LuaDocumentation/
 .env.*
 server/.env
 server/.env.*
+
+# Testing
+test-results/
