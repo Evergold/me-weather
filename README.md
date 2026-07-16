@@ -45,8 +45,7 @@ Ensure you have [Node.js](https://nodejs.org/) (v18+) and [Rust](https://www.rus
 ### 1. Compile Client WebAssembly (WASM Math Engine)
 The client requires the compiled spatial math engine before running:
 ```bash
-cd rust-engine/wasm-math
-wasm-pack build --target web --out-dir ../../src/wasm
+npm run build:wasm
 ```
 
 ### 2. Extracting Terrain Heights (Optional/Experimental)
@@ -66,23 +65,18 @@ This builds the client assets and starts the distributed Rust Axum microservices
     ```bash
     npm run build
     ```
-2.  **Start the Rust Game State Gateway & Tile Server**:
+2.  **Start the Rust Backend Orchestrator**:
     ```bash
-    cd rust-engine
-    cargo run --release --bin gateway &
-    cargo run --release --bin tile-server &
-    cargo run --release --bin webrtc-router &
+    npm run start:rust
     ```
 3.  Open `http://localhost:8000` in your web browser.
 
 ### 4. Launching in Development Mode
 This runs the Rust backend services and the Vite dev server with Hot Module Replacement (HMR).
 
-1.  **Start the Rust Backend Services**:
+1.  **Start the Rust Backend Orchestrator**:
     ```bash
-    cd rust-engine
-    cargo run --bin gateway &
-    cargo run --bin tile-server &
+    npm run dev:rust
     ```
 2.  **Start the Vite Dev Server**:
     In a new terminal window at the project root directory:
