@@ -53,9 +53,10 @@ export class WeatherTerrain {
       uniform sampler2D tNormal;
       uniform float uScale;
       uniform float uMorphProgress;
-      
       uniform vec2 uTileOffset;
       uniform float uTileScale;
+      uniform float uParentUvScale;
+      uniform vec2 uParentUvOffset;
 
       varying vec2 vUv;
       varying vec2 vUvGlobal;
@@ -69,13 +70,20 @@ export class WeatherTerrain {
         float tilesCount = 1.0 / uTileScale;
         vUvGlobal = vec2(
           uTileOffset.x * uTileScale + uv.x * uTileScale,
-          ((tilesCount - 1.0 - uTileOffset.y) + uv.y) * uTileScale
+          uTileOffset.y * uTileScale + uv.y * uTileScale
         );
-        
-        // Disable flawed z=0 geomorphing to prevent visible popping and melting
+        // Flawless Geomorphing: interpolate from parent tile texture to child tile texture
         vec2 clampedUv = clamp(uv, 0.002, 0.998);
         float hTarget = textureLod(tHeight, clampedUv, 0.0).r;
-        float height = hTarget;
+        
+        vec2 parentUv;
+        if (uParentUvScale > 0.0) {
+            parentUv = uv * uParentUvScale + uParentUvOffset;
+        } else {
+            parentUv = vUvGlobal;
+        }
+        float hPrev = textureLod(tHeightPrev, clamp(parentUv, 0.002, 0.998), 0.0).r;
+        float height = mix(hPrev, hTarget, uMorphProgress);
         vHeight = height;
         
         vec3 pos = position;
@@ -372,8 +380,14 @@ export class WeatherTerrain {
       
       // 2. Wait for shaders to be fully compiled asynchronously before swapping
       await Promise.all(compilationPromises);
-      this.morphStartTime = performance.now();
-      this.uniforms.uMorphProgress = 0.0;
+      
+      if (z > this.currentZoom) {
+        this.morphStartTime = performance.now();
+        this.uniforms.uMorphProgress = 0.0;
+      } else {
+        this.morphStartTime = null;
+        this.uniforms.uMorphProgress = 1.0;
+      }
       
       const keysToDelete = [];
       for (const [key, tile] of this.activeTiles.entries()) {
@@ -445,7 +459,7 @@ export class WeatherTerrain {
           "uScale", "uMorphProgress", "activeLayer", "timeOfDay",
           "uLightDir", "uLightColor", "uTileOffset", "uTileScale",
           "uWeatherOffset", "uWeatherScale", "uIsZoomed",
-          "uSeason", "uTime"
+          "uSeason", "uTime", "uParentUvScale", "uParentUvOffset"
         ],
         samplers: ["tHeight", "tHeightPrev", "tNormal", "tWeather", "tFlow"]
       }
@@ -552,12 +566,32 @@ export class WeatherTerrain {
     flowTex.wrapU = BABYLON.Texture.CLAMP_ADDRESSMODE;
     flowTex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
     
-    material.setTexture("tHeight", heightTex);
-    if (this.coarseHeightTex) {
-      material.setTexture("tHeightPrev", this.coarseHeightTex);
-    } else {
-      material.setTexture("tHeightPrev", heightTex);
+    let prevTex = this.coarseHeightTex;
+    let parentScale = 0.0;
+    let parentOffsetX = 0.0;
+    let parentOffsetY = 0.0;
+    
+    // Perfect geomorphing: use the active parent tile's heightmap as the previous morph state
+    if (z > 0 && z > this.currentZoom) {
+      const pZ = z - 1;
+      const pX = Math.floor(x / 2);
+      const pY = Math.floor(y / 2);
+      const parentKey = `${pZ}_${pX}_${pY}`;
+      if (this.activeTiles.has(parentKey)) {
+        const parentTile = this.activeTiles.get(parentKey);
+        if (parentTile.heightTex && parentTile.loaded) {
+          prevTex = parentTile.heightTex;
+          parentScale = 0.5;
+          parentOffsetX = (x % 2) * 0.5;
+          parentOffsetY = (y % 2) * 0.5;
+        }
+      }
     }
+    
+    material.setFloat("uParentUvScale", parentScale);
+    material.setVector2("uParentUvOffset", new BABYLON.Vector2(parentOffsetX, parentOffsetY));
+    material.setTexture("tHeight", heightTex);
+    material.setTexture("tHeightPrev", prevTex || heightTex);
     material.setTexture("tNormal", normalTex);
     material.setTexture("tFlow", flowTex);
     
