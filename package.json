@@ -6,8 +6,8 @@
   "scripts": {
     "predev": "npm run build:wasm",
     "dev": "vite",
-    "dev:rust": "cd rust-engine && cargo run --bin gateway & cd rust-engine && cargo run --bin tile-server & cd rust-engine && cargo run --bin webrtc-router & wait",
-    "start:rust": "cd rust-engine && cargo run --release --bin gateway & cd rust-engine && cargo run --release --bin tile-server & cd rust-engine && cargo run --release --bin webrtc-router & wait",
+    "dev:rust": "bash -c 'trap \"docker stop scylla-node\" EXIT INT TERM; cd rust-engine && cargo run -p server'",
+    "start:rust": "bash -c 'trap \"docker stop scylla-node\" EXIT INT TERM; cd rust-engine && cargo run --release -p server'",
     "build:wasm": "cd rust-engine/wasm-math && wasm-pack build --target web --out-dir ../../src/wasm",
     "prebuild": "npm run build:wasm",
     "build": "vite build",
@@ -19,6 +19,8 @@
   },
   "dependencies": {
     "@babylonjs/core": "^9.16.1",
-    "@babylonjs/loaders": "^9.16.1"
+    "@babylonjs/loaders": "^9.16.1",
+    "ktx2-encoder": "^0.5.3",
+    "puppeteer": "^25.3.0"
   }
 }
