@@ -4,7 +4,9 @@ import cullShaderCode from './cull.wgsl?raw';
 export class TerrainCuller {
     constructor(engine) {
         this.engine = engine;
-        this.isSupported = engine.isWebGPU;
+        // Temporarily disable WebGPU compute culling to prevent StorageBuffer recreation memory leaks
+        // CPU culling is extremely fast for quadtree tile sets and avoids GPU data transfer overhead
+        this.isSupported = false; // engine.isWebGPU;
         
         if (this.isSupported) {
             this.initComputeShader();
