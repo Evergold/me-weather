@@ -40,53 +40,56 @@ For full documentation on our automated backend Pytest regression suite and our 
 
 ## 🚀 Getting Started
 
-Ensure you have [Node.js](https://nodejs.org/) (v18+) and [Python](https://www.python.org/) (v3.10+) installed.
+Ensure you have [Node.js](https://nodejs.org/) (v18+) and [Rust](https://www.rust-lang.org/tools/install) (v1.85+) installed.
 
-### 1. Set Up the Python Environment
-Install `uv` (if not already installed) and set up the virtual environment:
+### 1. Compile Client WebAssembly (WASM Math Engine)
+The client requires the compiled spatial math engine before running:
+```bash
+cd rust-engine/wasm-math
+wasm-pack build --target web --out-dir ../../src/wasm
+```
+
+### 2. Extracting Terrain Heights (Optional/Experimental)
+If you have the source game data files, configure `HEIGHTS_PATH` in `.env` and extract the regional heightmaps using the legacy python script:
 ```bash
 cd server
 uv venv .venv
 uv pip install -r requirements.txt
-```
-
-### 2. Extracting Terrain Heights (Optional/Experimental)
-If you have the source game data files, configure `HEIGHTS_PATH` in `.env` and extract the regional heightmaps:
-```bash
-cd server
 .venv/bin/python height_extractor.py --mode extract-regions --region all
 ```
-Generated heightmaps are saved in `server/assets/generated-heights/`.
 
-### 3. Launching in Production Mode (Single-Process Setup)
-This compiles the frontend assets and runs both the FastAPI backend and the client web app together on port `8000`.
+### 3. Launching in Production Mode
+This builds the client assets and starts the distributed Rust Axum microservices.
 
 1.  **Build the Client Assets**:
     At the project root directory:
     ```bash
     npm run build
     ```
-2.  **Start the Unified Server**:
+2.  **Start the Rust Game State Gateway & Tile Server**:
     ```bash
-    cd server
-    .venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+    cd rust-engine
+    cargo run --release --bin gateway &
+    cargo run --release --bin tile-server &
+    cargo run --release --bin webrtc-router &
     ```
 3.  Open `http://localhost:8000` in your web browser.
 
-### 4. Launching in Development Mode (Dual-Process Setup)
-This runs the FastAPI backend on port `8000` and the Vite dev server with Hot Module Replacement (HMR) on port `5173`.
+### 4. Launching in Development Mode
+This runs the Rust backend services and the Vite dev server with Hot Module Replacement (HMR).
 
-1.  **Start the Simulation Server**:
+1.  **Start the Rust Backend Services**:
     ```bash
-    cd server
-    .venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+    cd rust-engine
+    cargo run --bin gateway &
+    cargo run --bin tile-server &
     ```
 2.  **Start the Vite Dev Server**:
     In a new terminal window at the project root directory:
     ```bash
     npm run dev
     ```
-3.  Open `http://localhost:5173` in your web browser. Any edits made to files in `src/` or `index.html` will hot-reload instantly.
+3.  Open `http://localhost:5173` in your web browser.
 
 ---
 
