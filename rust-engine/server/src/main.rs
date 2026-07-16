@@ -17,7 +17,7 @@ struct AppState {
     physics: physics::PhysicsSolver,
     // Configuration from .env
     pause_on_idle: bool,
-    decouple_hydrology: bool,
+    enable_hydrology: bool,
     gpu_vram_gb: u32,
 }
 
@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Parse configuration from .env
     let pause_on_idle = std::env::var("PAUSE_ON_IDLE").unwrap_or_else(|_| "True".to_string()).eq_ignore_ascii_case("true");
-    let decouple_hydrology = std::env::var("DECOUPLE_HYDROLOGY").unwrap_or_else(|_| "False".to_string()).eq_ignore_ascii_case("true");
+    let enable_hydrology = std::env::var("ENABLE_HYDROLOGY").unwrap_or_else(|_| "True".to_string()).eq_ignore_ascii_case("true");
     let gpu_vram_gb = std::env::var("GPU_VRAM_GB").unwrap_or_else(|_| "8".to_string()).parse::<u32>().unwrap_or(8);
 
     // 1. Initialize the WGPU Physics Engine (in-memory)
@@ -47,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tx,
         physics: physics_engine,
         pause_on_idle,
-        decouple_hydrology,
+        enable_hydrology,
         gpu_vram_gb,
     });
 
@@ -58,7 +58,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // 3. Merge the Game State Websocket with the Tile Streamer (Axum)
+    // 3. Background Physics Tick Loop (60 FPS)
+    let ticker_state = app_state.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(16));
+        loop {
+            interval.tick().await;
+            
+            // If PAUSE_ON_IDLE is true, we only tick if there's at least 1 active websocket player
+            if ticker_state.pause_on_idle && ticker_state.tx.receiver_count() == 0 {
+                continue;
+            }
+
+            // Note: In the future, we will use ticker_state.enable_hydrology 
+            // to conditionally skip the moisture shader passes here!
+            ticker_state.physics.update(16, 16);
+        }
+    });
+
+    // 4. Merge the Game State Websocket with the Tile Streamer (Axum)
     let gateway_router = Router::new()
         .route("/ws/control/{id}", get(ws_handler))
         .with_state(app_state);
@@ -95,9 +113,6 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>) {
                 if let Some(Ok(Message::Text(text))) = msg {
                     if let Ok(parsed) = serde_json::from_str::<ControlMessage>(text.as_str()) {
                         println!("[Gateway] Parsed: {:?}", parsed);
-                        
-                        // Dispatch to the native WGPU physics engine!
-                        state.physics.update(16, 16);
                         
                         let _ = state.tx.send(text.to_string());
                     }
