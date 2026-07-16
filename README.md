@@ -11,6 +11,7 @@ An interactive, GPU-accelerated client-server weather simulator of Middle-earth.
 *   **Server-Side Terrain Map Support**: The server holds and serves the master elevation maps (`heightmap_coarse.png` and `normalmap_coarse.jpg`). It dynamically slices high-res tiles on startup. If assets are missing, the server halts startup to ensure data integrity.
 *   **Unified Client-Server Process**: In production mode, the monolithic Rust Axum server orchestrates the physics simulation and WebSocket telemetry channel on port `8000`, while directly mounting and hosting the compiled Vite client assets (`dist/`) from the same port.
 *   **Iterative Tiled Compute Mode**: If the requested simulation grid exceeds the WebGPU 2GB per-buffer limit or dynamically configured VRAM thresholds, the physics solver seamlessly falls back to streaming 4096x4096 chunked tiles to the GPU sequentially. This completely bypasses VRAM exhaustion crashes while preserving hardware-accelerated speeds for theoretically infinite map sizes.
+*   **Dynamic Server Meshing**: Uses ScyllaDB as a decentralized boundary-registry, allowing multiple physical servers to claim dynamic amounts of 4096x4096 tiles based on their available VRAM. Servers run compute natively in parallel and exchange edge boundary data to seamlessly simulate continents too massive for a single machine.
 *   **WebGPU Compute Buffer Setup**: Sync-requests Vulkan/EGL adapters and devices natively on the host server via `wgpu-rs`, allocating and uploading simulation buffers for native hardware execution.
 *   **Volumetric 3D Cloud Particles**: Renders 6,000 large, additive-blended vapor points on the client browser. The cloud points float at varying volumetric heights, drift dynamically with local wind vectors, and cluster exclusively in high-humidity areas (moisture $\ge 55\%$) for realistic atmospheric depth.
 *   **Custom Terrain Shader**: Renders a 3D displaced terrain mesh in WebGPU / WebGL 2 (Babylon.js). Toggling the **Moisture overlay** overlays a smooth, royal blue vapor flow on top of the green and rocky geographic terrain colors, matching the prototype visual style.
@@ -22,7 +23,7 @@ An interactive, GPU-accelerated client-server weather simulator of Middle-earth.
 
 ---
 
-## 🛠️ Technology Stack (Version 2.0 Rust Architecture)
+## 🛠️ Technology Stack
 
 *   **Vite & Vanilla JavaScript (ES6)** — Client-side bundler and UI controller.
 *   **Babylon.js (WebGPU / WebGL 2)** — Client-side 3D terrain rendering and dynamic weather systems.
@@ -30,7 +31,7 @@ An interactive, GPU-accelerated client-server weather simulator of Middle-earth.
 *   **WebAssembly (wasm-bindgen)** — Client-side spatial math and Delta Movement Culling bypassing JS garbage collection.
 *   **webrtc-rs** — Massive-scale UDP DataChannel routing for low-latency peer data.
 *   **wgpu-rs** — Native backend physics engine executing WebGPU atmospheric compute shaders with zero overhead.
-*   **ScyllaDB** — (Upcoming) Distributed persistence for global weather state and player data.
+*   **ScyllaDB** — Distributed database acting as a high-speed central registry for Dynamic Server Meshing and 5-minute persistent world-state snapshots.
 
 ---
 
