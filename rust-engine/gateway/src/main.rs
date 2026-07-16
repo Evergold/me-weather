@@ -17,7 +17,7 @@ struct AppState {
 #[derive(Serialize, Deserialize, Debug)]
 struct ControlMessage {
     season: Option<String>,
-    timeOfDay: Option<f32>,
+    time_of_day: Option<f32>,
     wind_x: Option<f32>,
     wind_y: Option<f32>,
 }
@@ -76,5 +76,22 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>) {
                 }
             }
         }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_control_message_parsing() {
+        let raw_json = r#"{"season": "Winter", "time_of_day": 14.5, "wind_x": 0.5, "wind_y": -0.2}"#;
+        let parsed: ControlMessage = serde_json::from_str(raw_json).unwrap();
+        
+        assert_eq!(parsed.season.as_deref(), Some("Winter"));
+        assert_eq!(parsed.time_of_day, Some(14.5));
+        assert_eq!(parsed.wind_x, Some(0.5));
+        assert_eq!(parsed.wind_y, Some(-0.2));
     }
 }
