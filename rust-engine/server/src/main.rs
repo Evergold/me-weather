@@ -17,6 +17,8 @@ struct AppState {
     physics: physics::PhysicsSolver,
     // Server-authoritative Hybrid Collider (Octree + Heightmap)
     collider: physics::collider::WorldCollider,
+    // ScyllaDB Session for Dynamic Server Meshing & Persistence
+    db: Option<Arc<scylla::client::session::Session>>,
     // Configuration from .env
     pause_on_idle: bool,
     enable_hydrology: bool,
@@ -52,11 +54,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 2. Initialize the Server-Authoritative Anti-Cheat Collider
     let collider = physics::collider::WorldCollider::new(&heightmap_path, 2000.0, 2000.0, 250.0);
     
+    let scylla_uri = std::env::var("SCYLLA_URI").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
+    
+    println!("[Database] Attempting to connect to ScyllaDB at {}...", scylla_uri);
+    let db_session = match scylla::client::session_builder::SessionBuilder::new().known_node(&scylla_uri).build().await {
+        Ok(session) => {
+            println!("[Database] Successfully connected to ScyllaDB cluster.");
+            // Scaffold the Keyspace and Table for Server Meshing (4096x4096 tiles)
+            let _ = session.query_unpaged("CREATE KEYSPACE IF NOT EXISTS weather_sim WITH REPLICATION = {'class' : 'SimpleStrategy', 'replication_factor' : 1}", &[]).await;
+            let _ = session.query_unpaged("CREATE TABLE IF NOT EXISTS weather_sim.tiles (tile_id text PRIMARY KEY, data blob, last_updated timestamp)", &[]).await;
+            Some(Arc::new(session))
+        },
+        Err(e) => {
+            println!("[Database] Failed to connect to ScyllaDB ({}). Running in isolated single-node mode.", e);
+            None
+        }
+    };
+
     let (tx, _rx) = broadcast::channel(100);
     let app_state = Arc::new(AppState { 
         tx,
         physics: physics_engine,
         collider,
+        db: db_session,
         pause_on_idle,
         enable_hydrology,
         gpu_vram_gb,
