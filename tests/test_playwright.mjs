@@ -28,7 +28,26 @@ async function runTest(engineType) {
         console.log(`[${engineType}] Page loaded. Waiting 10 seconds for terrain to render...`);
         await new Promise(r => setTimeout(r, 10000));
         
-        await page.screenshot({ path: `../scratch/playwright_${engineType}.png` });
+        if (engineType === 'webgpu') {
+            console.log(`[${engineType}] Bypassing native page.screenshot() to avoid Lavapipe readback crashes...`);
+            const b64 = await page.evaluate(() => {
+                return new Promise((resolve) => {
+                    const r = window.__WEATHER_RENDERER;
+                    if (!r || !r.engine || !r.camera) return resolve(null);
+                    r.engine.onEndFrameObservable.addOnce(() => {
+                        window.BABYLON.Tools.CreateScreenshotUsingRenderTarget(r.engine, r.camera, { width: 1920, height: 1080 }, function (data) {
+                            resolve(data);
+                        });
+                    });
+                });
+            });
+            if (b64) {
+                const buffer = Buffer.from(b64.split(',')[1], 'base64');
+                fs.writeFileSync(`../scratch/playwright_${engineType}.png`, buffer);
+            }
+        } else {
+            await page.screenshot({ path: `../scratch/playwright_${engineType}.png` });
+        }
         console.log(`[${engineType}] Screenshot saved.`);
     } catch (e) {
         console.error(`[${engineType}] Error: ${e.message}`);
@@ -41,7 +60,7 @@ async function main() {
     if (!fs.existsSync('../scratch')) {
         fs.mkdirSync('../scratch');
     }
-    await runTest('webgpu');
+    await runTest('webgl');
 }
 
 main();

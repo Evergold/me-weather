@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // 1. Initialize core sub-systems
   const physics = new WeatherPhysics(256, 256);
   const renderer = new WeatherRenderer(canvas, physics);
+  window.__WEATHER_RENDERER = renderer; // Exposed for Playwright WebGPU screenshots
   let ui = null;
   
   let lastTime = performance.now();
