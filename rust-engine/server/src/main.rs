@@ -72,13 +72,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         Err(e) => {
             tracing::info!("[Database] Connection failed ({}). Attempting to automatically start ScyllaDB via Docker...", e);
-            let docker_result = std::process::Command::new("docker")
-                .args(["run", "--name", "scylla-node", "-d", "-p", "9042:9042", "scylladb/scylla:5.4.0"])
+            // First try to start an existing container
+            let start_result = std::process::Command::new("docker")
+                .args(["start", "scylla-node"])
                 .output();
                 
-            if docker_result.is_ok() {
-                tracing::info!("[Database] Docker container started. Waiting 15 seconds for ScyllaDB to initialize...");
-                tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+            let docker_result = if start_result.is_ok() && start_result.as_ref().unwrap().status.success() {
+                start_result
+            } else {
+                // If it doesn't exist or failed to start, run a new one
+                let _ = std::process::Command::new("docker").args(["rm", "-f", "scylla-node"]).output();
+                std::process::Command::new("docker")
+                    .args([
+                        "run", "--name", "scylla-node", "-d",
+                        "--network", "host",
+                        "scylladb/scylla:5.4.0",
+                        "--developer-mode", "1",
+                        "--listen-address", "127.0.0.1",
+                        "--rpc-address", "127.0.0.1",
+                        "--broadcast-address", "127.0.0.1",
+                        "--broadcast-rpc-address", "127.0.0.1"
+                    ])
+                    .output()
+            };
+                
+            if docker_result.is_ok() && docker_result.as_ref().unwrap().status.success() {
+                tracing::info!("[Database] Docker container started. Waiting 40 seconds for ScyllaDB to initialize...");
+                tokio::time::sleep(std::time::Duration::from_secs(40)).await;
                 
                 // Retry connection
                 if let Ok(session) = scylla::client::session_builder::SessionBuilder::new().known_node(&scylla_uri).build().await {
