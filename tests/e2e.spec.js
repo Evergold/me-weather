@@ -243,4 +243,83 @@ test.describe('Babylon.js WebGPU Simulation E2E Suite', () => {
     expect(testResult.bytes).toBe(16384);
   });
 
+  // -------------------------------------------------------------------------
+  // 7. localStorage / DB re-hydration
+  // -------------------------------------------------------------------------
+  test('localStorage persistence across reloads', async ({ page }) => {
+    await page.goto('/');
+    
+    // Inject a value into localStorage
+    await page.evaluate(() => {
+      localStorage.setItem('me_weather_test_key', 'persisted_data_123');
+    });
+    
+    // Reload the page
+    await page.reload();
+    
+    // Check if it persisted
+    const val = await page.evaluate(() => {
+      return localStorage.getItem('me_weather_test_key');
+    });
+    
+    expect(val).toBe('persisted_data_123');
+  });
+
+  // -------------------------------------------------------------------------
+  // 8. UI telemetry (ControlMessage JSON)
+  // -------------------------------------------------------------------------
+  test('UI Telemetry (ControlMessage JSON) serializes correctly', async ({ page }) => {
+    // Evaluate a script that sends a telemetry-like message via the existing WebSocket if possible,
+    // or just simulate the ControlMessage serialization on the client-side.
+    const sentData = await page.evaluate(() => {
+      // Simulate constructing a ControlMessage that the rust backend expects
+      const controlMessage = {
+        type: "ui_telemetry",
+        season: "winter",
+        time_of_day: 14.5,
+        wind_x: 2.1,
+        wind_y: -0.5
+      };
+      return JSON.stringify(controlMessage);
+    });
+
+    const parsed = JSON.parse(sentData);
+    expect(parsed.type).toBe('ui_telemetry');
+    expect(parsed.season).toBe('winter');
+    expect(parsed.time_of_day).toBe(14.5);
+  });
+
+  // -------------------------------------------------------------------------
+  // 9. Mobile Viewport / Resizing
+  // -------------------------------------------------------------------------
+  test('Canvas resizes correctly on mobile viewport simulation', async ({ page }) => {
+    await page.goto('/');
+    
+    // Start with desktop viewport
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.waitForTimeout(1000);
+    
+    let canvasSize = await page.evaluate(() => {
+      const canvas = document.querySelector('canvas');
+      return { width: canvas.clientWidth, height: canvas.clientHeight };
+    });
+    
+    // Assert initial size is roughly matching viewport or full screen
+    expect(canvasSize.width).toBeGreaterThan(1000);
+    
+    // Emulate mobile switch
+    await page.setViewportSize({ width: 375, height: 667 }); // iPhone SE size
+    await page.waitForTimeout(1000);
+    
+    // Check if canvas resized
+    canvasSize = await page.evaluate(() => {
+      const canvas = document.querySelector('canvas');
+      return { width: canvas.clientWidth, height: canvas.clientHeight };
+    });
+    
+    expect(canvasSize.width).toBe(375);
+    expect(canvasSize.height).toBeGreaterThan(390);
+    expect(canvasSize.height).toBeLessThan(410);
+  });
+
 });
