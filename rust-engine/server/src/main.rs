@@ -41,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let gpu_vram_gb = std::env::var("GPU_VRAM_GB").unwrap_or_else(|_| "8".to_string()).parse::<u32>().unwrap_or(8);
 
     // 1. Initialize the WGPU Physics Engine (in-memory)
-    let physics_engine = physics::PhysicsSolver::new(16384, 16384, "@group(0) @binding(0) var<storage, read_write> data: array<f32>; @compute @workgroup_size(1) fn main() { data[0] = 0.0; }").await;
+    let physics_engine = physics::PhysicsSolver::new(16384, 16384, gpu_vram_gb, "@group(0) @binding(0) var<storage, read_write> data: array<f32>; @compute @workgroup_size(1) fn main() { data[0] = 0.0; }").await;
     let (tx, _rx) = broadcast::channel(100);
     let app_state = Arc::new(AppState { 
         tx,

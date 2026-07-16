@@ -17,7 +17,7 @@ pub struct PhysicsSolver {
 
 impl PhysicsSolver {
     /// Initializes a pure Rust wgpu physics context to execute WGSL atmospheric shaders
-    pub async fn new(grid_width: u32, grid_height: u32, wgsl_shader: &str) -> Self {
+    pub async fn new(grid_width: u32, grid_height: u32, gpu_vram_gb: u32, wgsl_shader: &str) -> Self {
         println!("[Physics Engine] Initializing native wgpu-rs compute context...");
         let instance = wgpu::Instance::default();
 
@@ -66,13 +66,14 @@ impl PhysicsSolver {
         // Initialize empty state buffer
         let buffer_size = (grid_width * grid_height * 4) as wgpu::BufferAddress; // 1 float = 4 bytes
         
-        let mode = if buffer_size > 2147483647 {
-            // Documenting WebGPU Spec Limit: 
-            // The WebGPU specification (and wgpu by extension) currently caps the maximum 
-            // contiguous storage buffer size (max_storage_buffer_binding_size) at ~2GB (2147483647 bytes).
-            // For grids exceeding this size (e.g., 32k x 32k floats = 4GB), we must automatically
-            // fall back to streaming chunks iteratively from System RAM using Tiled Compute Mode.
-            println!("[Physics Engine] Grid size exceeds WebGPU 2GB VRAM limits. Falling back to Iterative Tiled Compute Mode.");
+        let physical_vram_limit = (gpu_vram_gb as wgpu::BufferAddress) * 1024 * 1024 * 1024 * 9 / 10;
+        
+        let mode = if buffer_size > 2147483647 || buffer_size > physical_vram_limit {
+            // Documenting Limits: 
+            // 1. The WebGPU specification caps storage buffers at ~2GB (2147483647 bytes).
+            // 2. We also reserve 10% of physical VRAM for the host OS to prevent OOM panics.
+            // For grids exceeding either limit, we automatically fall back to streaming chunks iteratively.
+            println!("[Physics Engine] Grid size exceeds VRAM limits. Falling back to Iterative Tiled Compute Mode.");
             ExecutionMode::Tiled { tile_size: 4096, master_grid: None }
         } else {
             ExecutionMode::Monolithic
