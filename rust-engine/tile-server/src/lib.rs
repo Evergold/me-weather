@@ -40,7 +40,7 @@ pub fn build_router() -> Router {
 }
 
 async fn serve_tile(
-    Path((_z, map_type, x_y)): Path<(u32, String, String)>,
+    Path((z, map_type, x_y)): Path<(u32, String, String)>,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     // Parse {x}_{y}.png
@@ -61,17 +61,30 @@ async fn serve_tile(
         _ => return (StatusCode::NOT_FOUND, "Unknown map type").into_response(),
     };
 
-    // Calculate crop window based on zoom (z) and tile coords (tx, ty)
-    // For simplicity in this scaffold, we just crop directly if within bounds
-    let crop_x = tx * tile_size;
-    let crop_y = ty * tile_size;
+// Calculate crop window based on zoom (z) and tile coords (tx, ty)
+    // The master map is 1024x1024.
+    // At z=0, the world is 1 tile (1x1). The tile covers 1024x1024.
+    // At z=1, the world is 2x2 tiles. Each tile covers 512x512.
+    // At z=2, the world is 4x4 tiles. Each tile covers 256x256.
+    // At z=3, the world is 8x8 tiles. Each tile covers 128x128.
+    
+    // Scale factor for the source image.
+    // At z=0, we want to crop 1024x1024, so crop_size = 1024 / 1 = 1024.
+    let num_tiles = 1 << z;
+    let crop_size = 1024 / num_tiles;
+    
+    let crop_x = tx * crop_size;
+    let crop_y = ty * crop_size;
 
-    if crop_x + tile_size > source_image.width() || crop_y + tile_size > source_image.height() {
+    if crop_x + crop_size > source_image.width() || crop_y + crop_size > source_image.height() {
         return (StatusCode::NOT_FOUND, "Tile out of bounds").into_response();
     }
 
-    // Crop the image on the fly
-    let tile = source_image.crop_imm(crop_x, crop_y, tile_size, tile_size);
+    // Crop the image
+    let cropped = source_image.crop_imm(crop_x, crop_y, crop_size, crop_size);
+    
+    // Scale to 256x256 for the shader
+    let tile = cropped.resize_exact(256, 256, image::imageops::FilterType::Triangle);
 
     // Encode to PNG byte buffer
     let mut bytes: Vec<u8> = Vec::new();
