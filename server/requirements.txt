@@ -1,9 +1,2 @@
-fastapi
-uvicorn[standard]
-wgpu
 numpy
 pillow
-websockets
-tifffile
-openexr
-httpx
