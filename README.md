@@ -74,7 +74,15 @@ uv pip install -r requirements.txt
 .venv/bin/python height_extractor.py --mode extract-regions --region all
 ```
 
-### 2. Launching in Production Mode
+### 2.5. Environment Art Tile Generation (Required for new maps)
+Whenever you update the master `heightmap_coarse.png` or `normalmap_coarse.jpg` in `server/assets/`, you must rebuild the GPU-optimized KTX2 tiles before launching the client:
+```bash
+cd server
+python build_tiles.py
+```
+*(This script slices the master maps into QuadTree tiles and super-compresses them into Basis Universal KTX2 format using the `basisu` compiler, which is required for zero-latency WebGL/WebGPU texture streaming.)*
+
+### 3. Launching in Production Mode
 This builds the client assets and starts the distributed Rust Axum microservices.
 
 1.  **Build the Client Assets**:

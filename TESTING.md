@@ -8,18 +8,22 @@ To guarantee the engine remains rock solid, we use **Playwright** to execute a s
 
 ## 🚀 Running the Frontend E2E Suite
 
-The Playwright suite is located in `tests/e2e.spec.js`. To execute the test suite:
+The E2E tests are organized under the `tests/` directory:
+- `tests/e2e/` - Contains the Playwright and Puppeteer integration tests (e.g., `puppeteer_test.js`)
+- `tests/unit/` - Contains isolated unit tests (e.g., `test-frustum.mjs`)
+
+To execute the core E2E suite:
 
 1. Ensure your local `vite` development server is running in one terminal:
    ```bash
    npm run dev
    ```
-2. In a second terminal, execute Playwright:
+2. In a second terminal, execute the desired test file. For example:
    ```bash
-   npx playwright test
+   node tests/e2e/puppeteer_test.mjs
    ```
 
-*(Playwright will automatically launch a headless Chromium instance, run the test suites, and report the results).*
+*(The suite will automatically launch a headless browser instance, run the verifications, and report the results).*
 
 ---
 
