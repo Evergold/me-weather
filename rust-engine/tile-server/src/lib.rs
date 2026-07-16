@@ -16,13 +16,12 @@ struct AppState {
     coarse_normalmap: DynamicImage,
 }
 
-#[tokio::main]
-async fn main() {
-    println!("[Tile Server] Booting high-speed Rust tile streamer...");
+pub fn build_router() -> Router {
+    println!("[Tile Server] Initializing high-speed Rust tile routes...");
 
     // Load master coarse maps (simulating the load-on-demand cache)
-    let heightmap_path = "../../server/assets/heightmap_coarse.png";
-    let normalmap_path = "../../server/assets/normalmap_coarse.jpg";
+    let heightmap_path = "../server/assets/heightmap_coarse.png";
+    let normalmap_path = "../server/assets/normalmap_coarse.jpg";
     
     // Fallback to empty 1024x1024 images if files don't exist during testing
     let coarse_heightmap = image::open(heightmap_path).unwrap_or_else(|_| DynamicImage::new_luma8(1024, 1024));
@@ -33,15 +32,10 @@ async fn main() {
         coarse_normalmap,
     });
 
-    // Build Axum router
-    let app = Router::new()
-        .route("/tiles/:z/:map_type/:x_y", get(serve_tile))
-        .with_state(state);
-
-    let listener = TcpListener::bind("0.0.0.0:8001").await.unwrap();
-    println!("[Tile Server] Listening on http://0.0.0.0:8001");
-    
-    axum::serve(listener, app).await.unwrap();
+    // Build and return Axum router
+    Router::new()
+        .route("/tiles/{z}/{map_type}/{x_y}", get(serve_tile))
+        .with_state(state)
 }
 
 async fn serve_tile(

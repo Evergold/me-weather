@@ -7,11 +7,14 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::broadcast;
+use std::net::SocketAddr;
 
 // Shared Game State Authority
 struct AppState {
     // Channel for broadcasting state changes (season, time) to all active player WebSockets
     tx: broadcast::Sender<String>,
+    // Physics engine state for monolithic in-memory dispatches
+    physics: physics::PhysicsSolver,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -23,20 +26,42 @@ struct ControlMessage {
 }
 
 #[tokio::main]
-async fn main() {
-    println!("[Gateway] Booting Rust Game State Authority on port 8000...");
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("[Orchestrator] Booting monolithic Rust backend on port 8000...");
 
+    // 1. Initialize the WGPU Physics Engine (in-memory)
+    let physics_engine = physics::PhysicsSolver::new(16384, 16384, "@group(0) @binding(0) var<storage, read_write> data: array<f32>; @compute @workgroup_size(1) fn main() { data[0] = 0.0; }").await;
     let (tx, _rx) = broadcast::channel(100);
-    let app_state = Arc::new(AppState { tx });
+    let app_state = Arc::new(AppState { 
+        tx,
+        physics: physics_engine,
+    });
 
-    let app = Router::new()
-        .route("/ws/control", get(ws_handler))
+    // 2. Spawn the UDP WebRTC DataChannel Router natively in a background task
+    tokio::spawn(async move {
+        if let Err(e) = webrtc_router::start_webrtc_server().await {
+            eprintln!("[WebRTC] Router crashed: {}", e);
+        }
+    });
+
+    // 3. Merge the Game State Websocket with the Tile Streamer (Axum)
+    let gateway_router = Router::new()
+        .route("/ws/control/{id}", get(ws_handler))
         .with_state(app_state);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
-    println!("[Gateway] Listening for WebSocket connections on ws://0.0.0.0:8000/ws/control");
+    let tile_router = tile_server::build_router();
 
+    let app = Router::new()
+        .merge(gateway_router)
+        .merge(tile_router);
+
+    // Bind monolithic HTTP server to port 8000
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
+    println!("[Orchestrator] Axum gateway & tile server running on ws://127.0.0.1:8000");
+    
     axum::serve(listener, app).await.unwrap();
+
+    Ok(())
 }
 
 async fn ws_handler(
@@ -49,23 +74,20 @@ async fn ws_handler(
 async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>) {
     let mut rx = state.tx.subscribe();
 
-    println!("[Gateway] New player connected to Control Socket.");
-
     loop {
         tokio::select! {
-            // Receive commands from the player
+            // Receive control messages from this player
             msg = socket.recv() => {
                 if let Some(Ok(Message::Text(text))) = msg {
-                    println!("[Gateway] Received control command: {}", text);
                     if let Ok(parsed) = serde_json::from_str::<ControlMessage>(text.as_str()) {
                         println!("[Gateway] Parsed: {:?}", parsed);
                         
-                        // In a full implementation, we would forward this via gRPC to the Physics Engine.
-                        // For now, broadcast it to all other players to sync the world state.
+                        // Dispatch to the native WGPU physics engine!
+                        state.physics.update(16, 16);
+                        
                         let _ = state.tx.send(text.to_string());
                     }
                 } else if msg.is_none() {
-                    println!("[Gateway] Player disconnected.");
                     break;
                 }
             }
