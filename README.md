@@ -49,7 +49,16 @@ You will also need to install `wasm-pack` globally for the WebAssembly math engi
 cargo install wasm-pack
 ```
 
-### 1. Extracting Terrain Heights (Optional/Experimental)
+### 1. (Optional) Start Local ScyllaDB Node
+
+The engine gracefully falls back to isolated memory mode if a database isn't found. However, to enable persistent 5-minute world-state snapshots or multi-node Server Meshing, you must run ScyllaDB locally:
+
+```bash
+docker run --name scylla-node -d -p 9042:9042 scylladb/scylla:5.4.0
+```
+*(The Rust server will automatically scaffold the required `weather_sim` keyspace and `tiles` table on its first successful connection).*
+
+### 2. Extracting Terrain Heights (Optional/Experimental)
 If you have the source game data files, configure `HEIGHTS_PATH` in `.env` and extract the regional heightmaps using the legacy python script:
 ```bash
 cd server
