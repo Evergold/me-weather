@@ -82,8 +82,14 @@ impl WorldCollider {
     }
 
     /// Server-Authoritative Validation API
-    /// Takes a starting position and an attempted ending position, and returns the strictly legal end position.
-    pub fn validate_movement(&self, start: Vec3, end: Vec3, collision_radius: f32) -> Vec3 {
+    /// Takes a starting position, an attempted ending position, and an `is_walking` flag.
+    /// Returns the strictly legal end position. 
+    /// If `is_walking` is false (e.g. spectator flycam), collision checks are bypassed.
+    pub fn validate_movement(&self, start: Vec3, end: Vec3, collision_radius: f32, is_walking: bool) -> Vec3 {
+        if !is_walking {
+            return end;
+        }
+
         let mut final_pos = end;
         
         // 1. Terrain Collision (Instant O(1) Array Check)
