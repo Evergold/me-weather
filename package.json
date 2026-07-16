@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "vite": "^5.2.0"
   },
   "dependencies": {

@@ -31,6 +31,12 @@ An interactive, GPU-accelerated client-server weather simulator of Middle-earth.
 
 ---
 
+## 🧪 Testing
+
+For full documentation on our automated backend Pytest regression suite and our headless E2E Playwright performance/memory profiling pipeline, please see [TESTING.md](TESTING.md).
+
+---
+
 ## 🚀 Getting Started
 
 Ensure you have [Node.js](https://nodejs.org/) (v18+) and [Python](https://www.python.org/) (v3.10+) installed.
