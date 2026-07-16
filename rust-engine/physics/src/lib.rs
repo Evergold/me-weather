@@ -1,12 +1,18 @@
 use wgpu::util::DeviceExt;
 use std::borrow::Cow;
 
+pub enum ExecutionMode {
+    Monolithic,
+    Tiled { tile_size: u32, master_grid: Option<Vec<f32>> },
+}
+
 pub struct PhysicsSolver {
     device: wgpu::Device,
     queue: wgpu::Queue,
     compute_pipeline: wgpu::ComputePipeline,
     bind_group: wgpu::BindGroup,
     buffer_size: wgpu::BufferAddress,
+    pub mode: ExecutionMode,
 }
 
 impl PhysicsSolver {
@@ -59,9 +65,27 @@ impl PhysicsSolver {
 
         // Initialize empty state buffer
         let buffer_size = (grid_width * grid_height * 4) as wgpu::BufferAddress; // 1 float = 4 bytes
+        
+        let mode = if buffer_size > 2147483647 {
+            // Documenting WebGPU Spec Limit: 
+            // The WebGPU specification (and wgpu by extension) currently caps the maximum 
+            // contiguous storage buffer size (max_storage_buffer_binding_size) at ~2GB (2147483647 bytes).
+            // For grids exceeding this size (e.g., 32k x 32k floats = 4GB), we must automatically
+            // fall back to streaming chunks iteratively from System RAM using Tiled Compute Mode.
+            println!("[Physics Engine] Grid size exceeds WebGPU 2GB VRAM limits. Falling back to Iterative Tiled Compute Mode.");
+            ExecutionMode::Tiled { tile_size: 4096, master_grid: None }
+        } else {
+            ExecutionMode::Monolithic
+        };
+
+        let allocation_size = match mode {
+            ExecutionMode::Monolithic => buffer_size,
+            ExecutionMode::Tiled { tile_size, .. } => (tile_size * tile_size * 4) as wgpu::BufferAddress,
+        };
+
         let storage_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Physics State Buffer"),
-            size: buffer_size,
+            size: allocation_size,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -83,6 +107,7 @@ impl PhysicsSolver {
             compute_pipeline,
             bind_group,
             buffer_size,
+            mode,
         }
     }
 
