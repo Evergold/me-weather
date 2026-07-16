@@ -42,13 +42,7 @@ For full documentation on our automated backend Pytest regression suite and our 
 
 Ensure you have [Node.js](https://nodejs.org/) (v18+) and [Rust](https://www.rust-lang.org/tools/install) (v1.85+) installed.
 
-### 1. Compile Client WebAssembly (WASM Math Engine)
-The client requires the compiled spatial math engine before running:
-```bash
-npm run build:wasm
-```
-
-### 2. Extracting Terrain Heights (Optional/Experimental)
+### 1. Extracting Terrain Heights (Optional/Experimental)
 If you have the source game data files, configure `HEIGHTS_PATH` in `.env` and extract the regional heightmaps using the legacy python script:
 ```bash
 cd server
@@ -57,8 +51,8 @@ uv pip install -r requirements.txt
 .venv/bin/python height_extractor.py --mode extract-regions --region all
 ```
 
-### 3. Launching in Production Mode
-This builds the client assets and starts the distributed Rust Axum microservices.
+### 2. Launching in Production Mode
+This builds the client assets (including auto-compiling the WebAssembly Math Engine) and starts the distributed Rust Axum microservices.
 
 1.  **Build the Client Assets**:
     At the project root directory:
@@ -71,7 +65,7 @@ This builds the client assets and starts the distributed Rust Axum microservices
     ```
 3.  Open `http://localhost:8000` in your web browser.
 
-### 4. Launching in Development Mode
+### 3. Launching in Development Mode
 This runs the Rust backend services and the Vite dev server with Hot Module Replacement (HMR).
 
 1.  **Start the Rust Backend Orchestrator**:

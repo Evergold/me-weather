@@ -4,10 +4,12 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "predev": "npm run build:wasm",
     "dev": "vite",
     "dev:rust": "cd rust-engine && cargo run --bin gateway & cd rust-engine && cargo run --bin tile-server & cd rust-engine && cargo run --bin webrtc-router & wait",
     "start:rust": "cd rust-engine && cargo run --release --bin gateway & cd rust-engine && cargo run --release --bin tile-server & cd rust-engine && cargo run --release --bin webrtc-router & wait",
     "build:wasm": "cd rust-engine/wasm-math && wasm-pack build --target web --out-dir ../../src/wasm",
+    "prebuild": "npm run build:wasm",
     "build": "vite build",
     "preview": "vite preview"
   },
