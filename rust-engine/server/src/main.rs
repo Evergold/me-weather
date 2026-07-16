@@ -13,6 +13,7 @@ pub mod cluster;
 // Shared Game State Authority
 struct AppState {
     tx: broadcast::Sender<String>,
+    offer_tx: tokio::sync::mpsc::Sender<(String, tokio::sync::oneshot::Sender<String>)>,
     physics: physics::PhysicsSolver,
     collider: physics::collider::WorldCollider,
     // ScyllaDB Session for Dynamic Server Meshing & Persistence
@@ -23,12 +24,15 @@ struct AppState {
     gpu_vram_gb: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 struct ControlMessage {
+    #[serde(rename = "type")]
+    msg_type: Option<String>,
     season: Option<String>,
     time_of_day: Option<f32>,
     wind_x: Option<f32>,
     wind_y: Option<f32>,
+    sdp: Option<String>,
 }
 
 #[tokio::main]
@@ -108,8 +112,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let (tx, _rx) = broadcast::channel(100);
+    let (offer_tx, offer_rx) = tokio::sync::mpsc::channel::<(String, tokio::sync::oneshot::Sender<String>)>(100);
+
     let app_state = Arc::new(AppState { 
         tx,
+        offer_tx,
         physics: physics_engine,
         collider,
         db: db_session,
@@ -123,7 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 2. Spawn the UDP WebRTC DataChannel Router natively in a background task
     tokio::spawn(async move {
-        if let Err(e) = webrtc_router::start_webrtc_server(webrtc_tx).await {
+        if let Err(e) = webrtc_router::start_webrtc_server(webrtc_tx, offer_rx).await {
             eprintln!("[WebRTC] Router crashed: {}", e);
         }
     });
@@ -217,7 +224,23 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>) {
                     if let Ok(parsed) = serde_json::from_str::<ControlMessage>(text.as_str()) {
                         println!("[Gateway] Parsed: {:?}", parsed);
                         
-                        let _ = state.tx.send(text.to_string());
+                        if parsed.msg_type.as_deref() == Some("webrtc_offer") {
+                            if let Some(offer) = parsed.sdp {
+                                let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+                                if state.offer_tx.send((offer, reply_tx)).await.is_ok() {
+                                    if let Ok(answer) = reply_rx.await {
+                                        let answer_msg = serde_json::json!({
+                                            "type": "webrtc_answer",
+                                            "sdp": answer
+                                        });
+                                        let _ = socket.send(Message::Text(serde_json::to_string(&answer_msg).unwrap().into())).await;
+                                    }
+                                }
+                            }
+                        } else {
+                            // Only broadcast non-WebRTC control messages to other players
+                            let _ = state.tx.send(text.to_string());
+                        }
                     }
                 } else if msg.is_none() {
                     break;
