@@ -41,6 +41,10 @@ For full documentation on our automated backend Pytest regression suite and our 
 ## 🚀 Getting Started
 
 Ensure you have [Node.js](https://nodejs.org/) (v18+) and [Rust](https://www.rust-lang.org/tools/install) (v1.85+) installed.
+You will also need to install `wasm-pack` globally for the WebAssembly math engine:
+```bash
+cargo install wasm-pack
+```
 
 ### 1. Extracting Terrain Heights (Optional/Experimental)
 If you have the source game data files, configure `HEIGHTS_PATH` in `.env` and extract the regional heightmaps using the legacy python script:
