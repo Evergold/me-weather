@@ -20,14 +20,15 @@ An interactive, GPU-accelerated client-server weather simulator of Middle-earth.
 
 ---
 
-## 🛠️ Technology Stack
+## 🛠️ Technology Stack (Version 2.0 Rust Architecture)
 
-*   **Vite & Vanilla JavaScript (ES6)** — Client-side bundler, state manager, and UI controller.
-*   **Babylon.js (WebGPU / WebGL 2)** — Client-side 3D terrain rendering, real-time light cycles, dynamic weather systems, and fallback systems.
-*   **FastAPI & Uvicorn** — Server-side API host, static asset delivery, and WebSockets.
-*   **wgpu-py** — Native WebGPU context and compute buffer management on the server.
-*   **NumPy** — Vectorized grid arrays and CPU background solvers.
-*   **uv** — Fast Python dependency installer and virtual environment manager.
+*   **Vite & Vanilla JavaScript (ES6)** — Client-side bundler and UI controller.
+*   **Babylon.js (WebGPU / WebGL 2)** — Client-side 3D terrain rendering and dynamic weather systems.
+*   **Rust & Axum** — Blazing-fast backend REST server and Game State Authority WebSockets.
+*   **WebAssembly (wasm-bindgen)** — Client-side spatial math and Delta Movement Culling bypassing JS garbage collection.
+*   **webrtc-rs** — Massive-scale UDP DataChannel routing for low-latency peer data.
+*   **wgpu-rs** — Native backend physics engine executing WebGPU atmospheric compute shaders with zero overhead.
+*   **ScyllaDB** — (Upcoming) Distributed persistence for global weather state and player data.
 
 ---
 
