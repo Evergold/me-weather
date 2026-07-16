@@ -56,11 +56,11 @@ Before the frontend UI was fully integrated, the Python backend (`server/`) was 
 ### Running the Backend Suite
 ```bash
 cd server
-./.venv/bin/pytest test_physics.py -v
+./.venv/bin/pytest -v
 ```
 
 ### Automated Backend Test Coverage
-The suite actively asserts 4 core simulation properties:
+The suite actively asserts 5 core simulation properties across `test_physics.py` and `test_api.py`:
 
 1.  **`test_weather_physics_instantiation`**
     *   **What it does:** Verifies that the core `WeatherPhysics` class successfully pre-allocates all large NumPy arrays (temperature, moisture, wind vectors) for a massive $2000 \times 2000$ grid without crashing the server's memory.
@@ -70,3 +70,5 @@ The suite actively asserts 4 core simulation properties:
     *   **What it does:** Asserts that the cellular automaton flow-routing algorithm (`HydrologySolver`) successfully accumulates downstream river widths without entering infinite loops on flat terrain.
 4.  **`test_cpu_gpu_consistency`**
     *   **What it does:** The most critical test. It executes the exact same atmospheric equations simultaneously on the NumPy CPU fallback and the `wgpu-py` WGSL shader. It then calculates the delta between the two output grids, asserting that the hardware-accelerated GPU math perfectly matches the precise CPU math within an acceptable float tolerance margin ($10^{-5}$).
+5.  **`test_websocket_control_settings` (API)**
+    *   **What it does:** Uses `FastAPI TestClient` to spin up a mock WebSocket connection to `/ws/control/`. It intercepts the ASGI application lifecycle, sends a simulated JSON UI setting (e.g. `{"timeOfDay": 1200}`), and asserts that the `ConnectionManager` successfully updates the global Python engine variables without dropping the socket connection.

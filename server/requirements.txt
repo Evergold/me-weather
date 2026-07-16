@@ -6,3 +6,4 @@ pillow
 websockets
 tifffile
 openexr
+httpx
