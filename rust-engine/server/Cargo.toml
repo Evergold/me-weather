@@ -11,11 +11,16 @@ tokio = { version = "1.52.3", features = ["full"] }
 tile-server = { path = "../tile-server" }
 webrtc-router = { path = "../webrtc-router" }
 physics = { path = "../physics" }
+reqwest = { version = "0.12", features = ["json"] }
+chrono = "0.4.38"
 dotenvy = "0.15"
 scylla = "1.7.0"
 tower-http = { version = "0.7.0", features = ["cors"] }
 tracing = "0.1.44"
 tracing-subscriber = "0.3.23"
+testcontainers = "0.27"
 
 [dev-dependencies]
-testcontainers = "0.23.1"
+async-trait = "0.1.89"
+testcontainers = "0.27"
+testcontainers-modules = { version = "0.15.0", features = ["scylladb"] }
