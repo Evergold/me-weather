@@ -1,6 +1,5 @@
 use testcontainers::{runners::AsyncRunner, GenericImage, core::ContainerPort};
 use scylla::client::session_builder::SessionBuilder;
-use std::time::Duration;
 
 #[tokio::test]
 async fn test_scylladb_meshing_registry() {

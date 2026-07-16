@@ -1,4 +1,4 @@
-use crate::octree::{OctreeNode, Vec3, Collidable, AABB};
+use crate::octree::{OctreeNode, Vec3, AABB};
 use image::{GenericImageView, DynamicImage};
 use std::path::Path;
 
@@ -15,13 +15,13 @@ impl WorldCollider {
     /// Initializes the collision world by loading the 2D heightmap for instant O(1) terrain validation
     /// and a 3D Octree for objects, buildings, and players.
     pub fn new(heightmap_path: &str, grid_width: f32, grid_depth: f32, max_height: f32) -> Self {
-        println!("[Physics] Initializing WorldCollider. Parsing heightmap: {}", heightmap_path);
+        tracing::info!("[Physics] Initializing WorldCollider. Parsing heightmap: {}", heightmap_path);
         
         // 1. Parse Heightmap into 2D Array
         let mut heightmap_data = Vec::new();
         
         let img = image::open(&Path::new(heightmap_path)).unwrap_or_else(|_| {
-            println!("[Physics] WARNING: Heightmap not found. Falling back to flat plane.");
+            tracing::info!("[Physics] WARNING: Heightmap not found. Falling back to flat plane.");
             DynamicImage::new_luma8(1024, 1024)
         });
         
