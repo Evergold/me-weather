@@ -47,6 +47,10 @@ The suite strictly enforces 5 core pillars of the engine's functionality:
 *   **What it does:** Forcefully spins up a browser instance that lacks the `--enable-unsafe-webgpu` runtime flag.
 *   **Why we automate it:** Guarantees that our graceful degradation logic functions flawlessly, successfully swapping the context to the `WebGL 2` fallback engine and firing the UI warning banner.
 
+### 6. WebRTC Server Meshing Integration
+*   **What it does:** Uses a custom Playwright evaluation script to manually perform a full WebRTC STUN/ICE handshake over the secure control WebSocket, opens the `player_telemetry` DataChannel, and asserts the successful reception of the native 16,384-byte float array.
+*   **Why we automate it:** Provides full end-to-end integration coverage for our Server-to-Peer architecture, ensuring that binary physics payloads correctly route through our UDP channels without TCP head-of-line blocking.
+
 ---
 
 ## ⚙️ Backend Unit Tests (Cargo)
