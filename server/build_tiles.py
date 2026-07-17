@@ -4,16 +4,18 @@ import glob
 import concurrent.futures
 from PIL import Image
 
-def generate_png_tiles(input_img_path, map_type):
+def generate_png_tiles(input_img_path, map_type, use_ktx2=False):
     if not os.path.exists(input_img_path):
         print(f"Skipping {input_img_path}, file not found")
         return
         
-    print(f"Slicing {input_img_path} into PNG tiles...")
+    print(f"Slicing {input_img_path} into tiles (KTX2: {use_ktx2})...")
     original_img = Image.open(input_img_path)
     
     # We want each output tile to be 1024x1024 for high quality
     TILE_SIZE = 1024
+    
+    generated_pngs = []
     
     for z in range(4):
         num_tiles = 1 << z
@@ -49,6 +51,27 @@ def generate_png_tiles(input_img_path, map_type):
                 
                 out_png = f"{out_dir}/{tx}_{ty}.png"
                 cropped.save(out_png)
+                generated_pngs.append(out_png)
+
+    if use_ktx2 and generated_pngs:
+        print(f"Compressing {len(generated_pngs)} PNGs to KTX2 format using basisu...")
+        def convert_to_ktx2(png_path):
+            try:
+                # Compile to Basis Universal KTX2 format
+                subprocess.run(
+                    ["basisu", "-ktx2", "-y_flip", os.path.basename(png_path)], 
+                    cwd=os.path.dirname(png_path), 
+                    stdout=subprocess.DEVNULL, 
+                    stderr=subprocess.DEVNULL,
+                    check=True
+                )
+                # Remove the uncompressed PNG
+                os.remove(png_path)
+            except Exception as e:
+                print(f"Failed to convert {png_path} to KTX2: {e}")
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            executor.map(convert_to_ktx2, generated_pngs)
 
 if __name__ == "__main__":
     # Ensure this script is run from the server directory
@@ -56,7 +79,11 @@ if __name__ == "__main__":
         print("Error: Please run this script from the 'server' directory.")
         exit(1)
         
-    generate_png_tiles("assets/heightmap.png", "height")
-    generate_png_tiles("assets/normalmap.png", "normal")
-    generate_png_tiles("assets/flowmap.png", "flow")
-    print("Successfully built all environment tiles into PNG format.")
+    generate_png_tiles("assets/heightmap.png", "height", use_ktx2=False)
+    generate_png_tiles("assets/normalmap.png", "normal", use_ktx2=False)
+    generate_png_tiles("assets/flowmap.png", "flow", use_ktx2=False)
+    
+    # Example for future detail textures:
+    # generate_png_tiles("assets/grass.png", "diffuse", use_ktx2=True)
+    
+    print("Successfully built all environment tiles.")
