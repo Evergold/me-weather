@@ -8,7 +8,7 @@
     "dev": "vite",
     "dev:rust": "bash -c 'trap \"docker stop scylla-node\" EXIT INT TERM; cd rust-engine && cargo run -p server'",
     "start:rust": "bash -c 'trap \"docker stop scylla-node\" EXIT INT TERM; cd rust-engine && cargo run --release -p server'",
-    "build:wasm": "cd rust-engine/wasm-math && wasm-pack build --target web --out-dir ../../src/wasm",
+    "build:wasm": "cd rust-engine/wasm-math && RUSTFLAGS=\"-C target-feature=+simd128\" wasm-pack build --target web --out-dir ../../src/wasm",
     "prebuild": "npm run build:wasm",
     "build": "vite build",
     "preview": "vite preview"
