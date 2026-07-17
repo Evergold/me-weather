@@ -15,7 +15,6 @@ export class WeatherTerrain {
     
     this.currentZoom = 0;
     this.initialTilesLoaded = false;
-    this.isCompiling = true;
     
     // Cache for material uniform values to apply to newly created tiles
     this.uniforms = {
@@ -376,6 +375,7 @@ export class WeatherTerrain {
       }
       
       // 2. Wait for shaders to be fully compiled asynchronously before swapping
+      this.isCompiling = true; // Trigger the UI 'finishing move' only while shaders are actually compiling
       await Promise.all(compilationPromises);
       
       this.isCompiling = false; // Triggers the UI 'finishing move' animation
