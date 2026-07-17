@@ -1,3 +1,6 @@
+// server_integration.rs (c) 2026 Evergold <261058386+Evergold@users.noreply.github.com>
+// Licensed under the MIT License (see LICENSE for details)
+
 use tokio;
 
 #[tokio::test]

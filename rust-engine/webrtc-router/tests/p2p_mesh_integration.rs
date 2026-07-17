@@ -1,3 +1,6 @@
+// p2p_mesh_integration.rs (c) 2026 Evergold <261058386+Evergold@users.noreply.github.com>
+// Licensed under the MIT License (see LICENSE for details)
+
 use std::sync::Arc;
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::MediaEngine;
