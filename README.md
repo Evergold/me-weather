@@ -2,7 +2,7 @@
 
 An interactive, GPU-accelerated client-server weather simulator of Middle-earth. It simulates thermodynamics, fluid dynamics, and terrain-climate interactions across massive high-resolution grids in real-time, delivering dynamic wind flows, precipitation, temperature variations, and moisture indices.
 
-![Middle-earth Weather Simulator Screenshot](screenshot_2.png)
+![Middle-earth Weather Simulator Screenshot](screenshot.png)
 
 ---
 
