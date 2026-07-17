@@ -15,6 +15,7 @@ export class WeatherTerrain {
     
     this.currentZoom = 0;
     this.initialTilesLoaded = false;
+    this.isCompiling = true;
     
     // Cache for material uniform values to apply to newly created tiles
     this.uniforms = {
@@ -377,6 +378,8 @@ export class WeatherTerrain {
       // 2. Wait for shaders to be fully compiled asynchronously before swapping
       await Promise.all(compilationPromises);
       
+      this.isCompiling = false; // Triggers the UI 'finishing move' animation
+      
       // Schedule the actual mesh swap to happen synchronously right before the next frame's active mesh evaluation.
       // This prevents the 1-frame black blink caused by async microtasks resolving mid-frame!
       await new Promise(resolve => {
@@ -455,6 +458,8 @@ export class WeatherTerrain {
           }
           
           this.currentZoom = z;
+          this.loadedTiles = this.loadedTiles || 0;
+          this.loadedTiles += keysToDelete.length ? 0 : 1; // Basic tracking
           this.initialTilesLoaded = true;
           resolve();
         });
