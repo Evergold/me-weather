@@ -164,7 +164,7 @@ export class WeatherTerrain {
         vec2 prevTexCoords = texCoords + deltaTexCoords;
         float afterDepth  = currentDepthMapValue - currentLayerDepth;
         float beforeDepth = (1.0 - texture2D(tHeight, clamp(prevTexCoords, 0.002, 0.998)).r) - currentLayerDepth + layerDepth;
-        float weight = afterDepth / (afterDepth - beforeDepth);
+        float weight = afterDepth / max(afterDepth - beforeDepth, 0.0001);
         vec2 finalTexCoords = prevTexCoords * weight + texCoords * (1.0 - weight);
         
         vec2 pomUv = clamp(finalTexCoords, 0.002, 0.998);
