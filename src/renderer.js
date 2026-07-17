@@ -78,8 +78,8 @@ export class WeatherRenderer {
     // Hardware Optimizations: Prevent CPU raycasting on mouse move (only cast on click)
     this.scene.skipPointerMovePicking = true;
     
-    // Hardware Optimizations: Prevent unnecessary full-screen color clears since the terrain fills the viewport
-    this.scene.autoClear = false;
+    // Enable clear to prevent hall-of-mirrors overdraw smearing at map edges
+    this.scene.autoClear = true;
     this.scene.autoClearDepthAndStencil = true; // MUST be true or depth fails
     this.scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
     this.scene.fogColor = new BABYLON.Color3(0.06, 0.07, 0.08);
