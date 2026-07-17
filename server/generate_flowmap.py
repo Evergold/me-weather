@@ -3,7 +3,7 @@ import argparse
 import numpy as np
 from PIL import Image
 
-def generate_flowmap(heightmap_path, output_path, strength=10.0):
+def generate_flowmap(heightmap_path, output_path, strength=3.0):
     print(f"Loading heightmap from {heightmap_path}...")
     img = Image.open(heightmap_path)
     
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate 2D flowmap vectors from a 16-bit heightmap")
     parser.add_argument("--input", default="assets/heightmap.png", help="Path to input 16-bit heightmap")
     parser.add_argument("--output", default="assets/flowmap.png", help="Path to output flowmap")
-    parser.add_argument("--strength", type=float, default=25.0, help="Gradient multiplier strength")
+    parser.add_argument("--strength", type=float, default=3.0, help="Gradient multiplier strength")
     args = parser.parse_args()
     
     if not os.path.exists(args.input):
