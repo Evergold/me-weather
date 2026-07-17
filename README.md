@@ -68,7 +68,7 @@ me-weather/
 │   │   └── normalmap_coarse.png
 │   ├── build_tiles.py       # QuadTree map slicing and KTX2 compression pipeline script
 │   ├── generate_flowmap.py  # Computes 2D fluid vectors from elevation gradients
-│   └── height_extractor.py  # Script for extracting heightmaps from source game data
+│   └── height_extractor.py  # Script for extracting heightmaps from cells
 ├── src/                     # Client-side JavaScript (Vite)
 │   ├── main.js              # Application entrypoint and render loop orchestrator
 │   ├── renderer.js          # WebGPU Babylon.js environment, camera, and lighting setup
