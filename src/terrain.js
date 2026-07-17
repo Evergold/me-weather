@@ -377,9 +377,9 @@ export class WeatherTerrain {
       // 2. Wait for shaders to be fully compiled asynchronously before swapping
       await Promise.all(compilationPromises);
       
-      // Schedule the actual mesh swap to happen synchronously right before the next frame renders.
+      // Schedule the actual mesh swap to happen synchronously right before the next frame's active mesh evaluation.
       // This prevents the 1-frame black blink caused by async microtasks resolving mid-frame!
-      this.scene.onBeforeRenderObservable.addOnce(() => {
+      this.scene.onBeforeActiveMeshesEvaluationObservable.addOnce(() => {
         const isZoomIn = z > this.currentZoom;
         this.morphStartTime = performance.now();
         
