@@ -73,9 +73,9 @@ export class WeatherRenderer {
     
     // 2. Setup Scene & Fog
     this.scene = new BABYLON.Scene(this.engine);
-    this.scene.clearColor = new BABYLON.Color4(0.06, 0.07, 0.08, 1.0); // Sleek dark theme
+    this.scene.clearColor = new BABYLON.Color4(0.2, 0.2, 0.3, 1.0); // Soothing blue
     this.scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
-    this.scene.fogColor = new BABYLON.Color3(0.06, 0.07, 0.08);
+    this.scene.fogColor = new BABYLON.Color3(0.2, 0.2, 0.3);
     this.scene.fogDensity = 0.0015;
     
     this.camera = new BABYLON.ArcRotateCamera(
