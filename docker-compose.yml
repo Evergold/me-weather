@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  scylla:
+    image: scylladb/scylla:5.4.0
+    container_name: scylla-node
+    network_mode: "host"
+    command: --developer-mode 1 --listen-address 127.0.0.1 --rpc-address 127.0.0.1 --broadcast-address 127.0.0.1 --broadcast-rpc-address 127.0.0.1
+    restart: "no"
