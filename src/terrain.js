@@ -725,6 +725,14 @@ export class WeatherTerrain {
       
       if (progress >= 1.0) {
         this.morphStartTime = null;
+        
+        // Detach old parent textures from active materials before disposing them to prevent WebGL black material errors
+        for (const tile of this.activeTiles.values()) {
+          if (tile.material && tile.heightTex) {
+            tile.material.setTexture("tHeightPrev", tile.heightTex);
+          }
+        }
+        
         if (this.pendingDisposals) {
           for (const tile of this.pendingDisposals) {
             if (tile.mesh) tile.mesh.dispose();
