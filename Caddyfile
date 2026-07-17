@@ -39,5 +39,10 @@ localhost {
     
     # Reverse proxy API endpoints (HTTPS)
     reverse_proxy /tiles/* 127.0.0.1:8000
-    reverse_proxy /assets/* 127.0.0.1:8000
+    
+    # Natively serve massive static map assets directly, bypassing the Rust app
+    handle_path /assets/* {
+        root * ./server/assets
+        file_server
+    }
 }
