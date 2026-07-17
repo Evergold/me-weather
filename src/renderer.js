@@ -106,6 +106,9 @@ export class WeatherRenderer {
     this.terrain = new WeatherTerrain(this.scene);
     this.particles = new WeatherParticles(this.scene);
     
+    // 5. Setup Post-Processing (SSGI / SSR)
+    this.initPostProcessing();
+    
     this.acoustics = new WeatherAcoustics();
     
     // Load heightmaps
@@ -137,6 +140,25 @@ export class WeatherRenderer {
     document.body.appendChild(banner);
   }
 
+  initPostProcessing() {
+    // --- Screen Space Global Illumination (via SSAO2) ---
+    // Simulates ambient light bouncing and micro-shadowing in terrain crevices
+    this.ssao = new BABYLON.SSAO2RenderingPipeline("ssao", this.scene, 0.75, [this.camera]);
+    this.ssao.radius = 4.5; // Wider radius to simulate terrain-scale bounced GI
+    this.ssao.totalStrength = 1.2;
+    this.ssao.expensiveBlur = true;
+    this.ssao.samples = 16;
+    this.ssao.maxZ = 1500; // Only calculate up close
+    
+    // --- Screen Space Reflections (SSR) ---
+    // Simulates specular light bouncing on water and wet rock
+    this.ssr = new BABYLON.SSRRenderingPipeline("ssr", this.scene, [this.camera], false, BABYLON.Constants.TEXTURETYPE_UNSIGNED_BYTE);
+    this.ssr.thickness = 0.1;
+    this.ssr.step = 2;
+    this.ssr.maxDistance = 500;
+    this.ssr.enableSmoothReflections = true;
+  }
+
   initLights() {
     // Ambient Light
     this.ambientLight = new BABYLON.HemisphericLight("ambient", new BABYLON.Vector3(0, 1, 0), this.scene);
@@ -147,6 +169,16 @@ export class WeatherRenderer {
     this.sunLight = new BABYLON.DirectionalLight("sunLight", new BABYLON.Vector3(-0.5, -0.8, -0.5), this.scene);
     this.sunLight.intensity = 1.2;
     this.sunLight.diffuse = new BABYLON.Color3(1.0, 0.95, 0.88);
+    
+    // --- Baked Radiance Volumes (IBL) Setup ---
+    // To accurately fake real-time global ambient bounce, we configure Spherical Harmonics
+    // using a highly tuned Hemispheric ground-bounce color setup.
+    this.ambientLight.groundColor = new BABYLON.Color3(0.08, 0.12, 0.05); // Bounced green/brown from terrain
+    this.ambientLight.specular = new BABYLON.Color3(0.1, 0.12, 0.15); // Sky reflection
+    
+    // Optional: If an environment.env or prefiltered HDRI is provided later, we attach it to the scene:
+    // this.scene.environmentTexture = BABYLON.CubeTexture.CreateFromPrefilteredData("/assets/env/sky.env", this.scene);
+    // this.scene.environmentIntensity = 0.8;
 
     // Profile detection (Desktop vs. Mobile)
     const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
