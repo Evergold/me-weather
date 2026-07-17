@@ -138,21 +138,19 @@ export class WeatherTerrain {
       varying vec3 vPosition;
       varying float vHeight;
 
-      // Fast 3D Hash Noise for Procedural Detail
-      float hash(vec3 p) {
-          p = fract(p * 0.3183099 + 0.1);
-          p *= 17.0;
-          return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+      // Fast 2D Hash Noise for Procedural Detail (Optimized from 3D for 2x performance)
+      float hash(vec2 p) {
+          vec3 p3  = fract(vec3(p.xyx) * .1031);
+          p3 += dot(p3, p3.yzx + 33.33);
+          return fract((p3.x + p3.y) * p3.z);
       }
 
-      float noise3D(vec3 x) {
-          vec3 i = floor(x);
-          vec3 f = fract(x);
+      float noise2D(vec2 x) {
+          vec2 i = floor(x);
+          vec2 f = fract(x);
           f = f * f * (3.0 - 2.0 * f);
-          return mix(mix(mix( hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)),f.x),
-                         mix( hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)),f.x),f.y),
-                     mix(mix( hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)),f.x),
-                         mix( hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)),f.x),f.y),f.z);
+          return mix(mix(hash(i + vec2(0.0,0.0)), hash(i + vec2(1.0,0.0)), f.x),
+                     mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), f.x), f.y);
       }
 
       void main() {
@@ -328,9 +326,10 @@ export class WeatherTerrain {
         // --- TRI-PLANAR PROCEDURAL NOISE (MICRO-DETAIL) ---
         // Dynamically blend high-frequency procedural noise when zooming extremely close
         // to hide underlying low-resolution texture pixels and give infinite detail.
+        // OPTIMIZATION: Reduced distance from 120.0 to 60.0 to save fragment fill-rate
         float detailDist = distance(vPosition, vEyePosition);
-        if (detailDist < 120.0 && isTerrainOrMoisture && !isWaterBody) {
-            float detailFade = clamp(1.0 - (detailDist / 120.0), 0.0, 1.0);
+        if (detailDist < 60.0 && isTerrainOrMoisture && !isWaterBody) {
+            float detailFade = clamp(1.0 - (detailDist / 60.0), 0.0, 1.0);
             
             // Generate Tri-Planar weights based on vertex normal
             vec3 blendWeights = abs(normal);
@@ -342,9 +341,10 @@ export class WeatherTerrain {
             float scale = 0.5;
             vec3 posS = vPosition * scale;
             
-            float nX = noise3D(vec3(posS.y, posS.z, posS.x));
-            float nY = noise3D(vec3(posS.x, posS.z, posS.y));
-            float nZ = noise3D(vec3(posS.x, posS.y, posS.z));
+            // OPTIMIZATION: Changed from 3D to 2D noise (12 hash lookups per pixel instead of 24)
+            float nX = noise2D(posS.yz);
+            float nY = noise2D(posS.xz);
+            float nZ = noise2D(posS.xy);
             
             float detailNoise = nX * blendWeights.x + nY * blendWeights.y + nZ * blendWeights.z;
             
