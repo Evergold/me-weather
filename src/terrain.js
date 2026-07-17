@@ -68,10 +68,9 @@ export class WeatherTerrain {
         vUv = uv;
         // Calculate global UV coordinates relative to the full terrain grid
         float tilesCount = 1.0 / uTileScale;
-        float globalOffsetY = (tilesCount - 1.0 - uTileOffset.y) * uTileScale;
         vUvGlobal = vec2(
           uTileOffset.x * uTileScale + uv.x * uTileScale,
-          globalOffsetY + uv.y * uTileScale
+          uTileOffset.y * uTileScale + uv.y * uTileScale
         );
         // Flawless Geomorphing: interpolate from parent tile texture to child tile texture
         vec2 clampedUv = clamp(uv, 0.002, 0.998);
@@ -378,15 +377,19 @@ export class WeatherTerrain {
       // 2. Wait for shaders to be fully compiled asynchronously before swapping
       await Promise.all(compilationPromises);
       
-      if (z > this.currentZoom) {
-        this.morphStartTime = performance.now();
+      const isZoomIn = z > this.currentZoom;
+      this.morphStartTime = performance.now();
+      
+      if (isZoomIn) {
         this.uniforms.uMorphProgress = 0.0;
+        this.morphDirection = 1;
       } else {
-        this.morphStartTime = null;
         this.uniforms.uMorphProgress = 1.0;
+        this.morphDirection = -1;
       }
       
       if (!this.pendingDisposals) this.pendingDisposals = [];
+      if (!this.pendingEnables) this.pendingEnables = [];
       
       const keysToDelete = [];
       for (const [key, tile] of this.activeTiles.entries()) {
@@ -394,13 +397,25 @@ export class WeatherTerrain {
         const tileZ = parseInt(parts[0]);
         
         if (tileZ !== z || !visibleKeys.has(key)) {
-          if (tile.mesh) tile.mesh.setEnabled(false); // Hide immediately
+          if (isZoomIn) {
+            if (tile.mesh) tile.mesh.setEnabled(false); // Hide immediately on zoom in
+          } else {
+            if (tile.mesh) tile.mesh.setEnabled(true); // Keep visible on zoom out to morph down
+          }
           this.pendingDisposals.push(tile); // Delay disposal until morph completes
           keysToDelete.push(key);
         } else {
-          // Now that compilation is complete and morph progress is set, safely enable target tiles
-          if (tile.mesh) tile.mesh.setEnabled(true);
-          if (tile.spsMesh) tile.spsMesh.setEnabled(true);
+          // Target tile handling
+          if (isZoomIn) {
+            // Zoom In: safely enable target tiles immediately (compilation is complete)
+            if (tile.mesh) tile.mesh.setEnabled(true);
+            if (tile.spsMesh) tile.spsMesh.setEnabled(true);
+          } else {
+            // Zoom Out: keep new tiles hidden until morph down completes
+            if (tile.mesh) tile.mesh.setEnabled(false);
+            if (tile.spsMesh) tile.spsMesh.setEnabled(false);
+            this.pendingEnables.push(tile);
+          }
           if (tile.material) tile.material.setFloat("uMorphProgress", this.uniforms.uMorphProgress);
         }
       }
@@ -577,9 +592,7 @@ export class WeatherTerrain {
           prevTex = parentTile.heightTex;
           parentScale = 0.5;
           parentOffsetX = (x % 2) * 0.5;
-          // Invert the Y offset because BabylonJS V=0 is at the bottom (South)
-          // y%2 === 0 is North child (needs V=0.5 to 1.0), y%2 === 1 is South child (needs V=0.0 to 0.5)
-          parentOffsetY = (y % 2 === 0) ? 0.5 : 0.0;
+          parentOffsetY = (y % 2) * 0.5;
         }
       }
     }
@@ -715,17 +728,36 @@ export class WeatherTerrain {
     // 2. Animate Geomorphing
     if (this.morphStartTime) {
       const elapsed = performance.now() - this.morphStartTime;
-      const progress = Math.min(1.0, elapsed / 250.0); // 250ms crossfade
+      const progressAmount = Math.min(1.0, elapsed / 250.0); // 250ms crossfade
+      
+      let progress = 0.0;
+      if (this.morphDirection === 1) {
+        progress = progressAmount;
+      } else {
+        progress = 1.0 - progressAmount;
+      }
       this.uniforms.uMorphProgress = progress;
       
+      // Update both active and pending tiles to animate zoom-out seamlessly
       for (const tile of this.activeTiles.values()) {
-        if (tile.material) {
-          tile.material.setFloat("uMorphProgress", progress);
+        if (tile.material) tile.material.setFloat("uMorphProgress", progress);
+      }
+      if (this.pendingDisposals) {
+        for (const tile of this.pendingDisposals) {
+          if (tile.material) tile.material.setFloat("uMorphProgress", progress);
         }
       }
       
-      if (progress >= 1.0) {
+      if (progressAmount >= 1.0) {
         this.morphStartTime = null;
+        
+        if (this.morphDirection === -1 && this.pendingEnables) {
+          for (const tile of this.pendingEnables) {
+            if (tile.mesh) tile.mesh.setEnabled(true);
+            if (tile.spsMesh) tile.spsMesh.setEnabled(true);
+          }
+          this.pendingEnables = [];
+        }
         
         // Detach old parent textures from active materials before disposing them to prevent WebGL black material errors
         for (const tile of this.activeTiles.values()) {
