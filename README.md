@@ -79,7 +79,7 @@ me-weather/
 ├── GPU_SOLVER.md            # Documentation for the WebGPU compute shader architecture
 ├── hostconfig.json          # Container orchestration runtime configuration
 ├── index.html               # Client HTML layout and interface DOM
-├── LICENSE                  # MIT License
+├── LICENSE                  # Project licenses
 ├── package.json             # NPM package and Vite script commands
 ├── README.md                # This file
 ├── scylla.yaml              # ScyllaDB initialization configuration
