@@ -4,17 +4,51 @@ import cullShaderCode from './cull.wgsl?raw';
 export class TerrainCuller {
     constructor(engine) {
         this.engine = engine;
-        // Re-enabled WebGPU compute culling with persistent buffers to scale to millions of objects
+        // WebGPU compute culling
         this.isSupported = engine.isWebGPU;
         
         if (this.isSupported) {
             this.initComputeShader();
             
-            // Persistent buffer tracking to prevent memory leaks
+            // Persistent buffer tracking
             this.tilesCapacity = 0;
             this.tilesBuffer = null;
             this.visibleTilesBuffer = null;
             this.visibleCountBuffer = null;
+        } else {
+            // Web Worker Wasm Fallback for WebGL
+            this.initWasmWorker();
+        }
+    }
+
+    initWasmWorker() {
+        this.worker = new Worker(new URL('./workers/culling_worker.js', import.meta.url), { type: 'module' });
+        
+        // Pre-allocate SharedArrayBuffers for 4096 tiles (8 floats each)
+        // Note: SAB requires COOP/COEP headers to be active
+        try {
+            this.inputSab = new SharedArrayBuffer(4096 * 8 * 4); // 4096 tiles * 8 floats * 4 bytes
+            this.outputSab = new SharedArrayBuffer(4096 * 4);    // 4096 tiles * 1 uint * 4 bytes
+            
+            this.inputView = new Float32Array(this.inputSab);
+            this.outputView = new Uint32Array(this.outputSab);
+            
+            this.worker.postMessage({
+                type: 'INIT',
+                payload: {
+                    inputSab: this.inputSab,
+                    outputSab: this.outputSab
+                }
+            });
+            
+            this.wasmReady = new Promise(resolve => {
+                this.worker.addEventListener('message', (e) => {
+                    if (e.data.type === 'INIT_DONE') resolve();
+                }, { once: true });
+            });
+        } catch (e) {
+            console.error("[TerrainCuller] SharedArrayBuffer not available (check COOP/COEP headers). Falling back to pure JS culling.");
+            this.worker = null;
         }
     }
 
@@ -33,11 +67,8 @@ export class TerrainCuller {
             }
         );
         
-        // We will initialize buffers dynamically based on grid size
         this.frustumBuffer = new BABYLON.UniformBuffer(this.engine, undefined, undefined, "frustumBuffer");
-        // 6 planes * 4 floats (vec3 + dist padded to vec4) = 24 floats = 96 bytes
         this.frustumBuffer.addUniform("planes", 4, 6);
-        // WGSL struct requires 16-byte alignment padding (4 floats = 16 bytes)
         this.frustumBuffer.addUniform("tileCount", 1);
         this.frustumBuffer.addUniform("padding1", 1);
         this.frustumBuffer.addUniform("padding2", 1);
@@ -46,16 +77,14 @@ export class TerrainCuller {
 
     async cullTilesAsync(camera, tilesArray) {
         if (!this.isSupported || tilesArray.length === 0) {
-            // CPU Fallback if WebGL2
+            if (this.worker && this.wasmReady) {
+                return this.wasmCullFallbackAsync(camera, tilesArray);
+            }
             return this.cpuCullFallback(camera, tilesArray);
         }
 
         const tileCount = tilesArray.length;
 
-        // 1. Pack Tiles into Storage Buffer
-        // AABB (min vec3 + pad, max vec3 + pad) = 8 floats
-        // id u32 + pad = 4 uints
-        // Total = 12 floats/uints = 48 bytes per tile
         const tilesData = new Float32Array(tileCount * 12);
         const tilesDataUint = new Uint32Array(tilesData.buffer);
 
@@ -66,17 +95,16 @@ export class TerrainCuller {
             tilesData[offset + 0] = t.min.x;
             tilesData[offset + 1] = t.min.y;
             tilesData[offset + 2] = t.min.z;
-            tilesData[offset + 3] = 0.0; // pad
+            tilesData[offset + 3] = 0.0; 
             
             tilesData[offset + 4] = t.max.x;
             tilesData[offset + 5] = t.max.y;
             tilesData[offset + 6] = t.max.z;
-            tilesData[offset + 7] = 0.0; // pad
+            tilesData[offset + 7] = 0.0; 
 
-            tilesDataUint[offset + 8] = i; // id (index)
+            tilesDataUint[offset + 8] = i; 
         }
 
-        // Dynamically reallocate persistent buffers only when capacity is exceeded
         if (tileCount > this.tilesCapacity) {
             this.tilesCapacity = Math.max(tileCount, this.tilesCapacity * 2 || 1024);
             
@@ -96,7 +124,6 @@ export class TerrainCuller {
         this.tilesBuffer.update(tilesData);
         this.visibleCountBuffer.update(new Uint32Array([0]));
 
-        // 2. Update Frustum Planes
         const frustumPlanes = BABYLON.Frustum.GetPlanes(camera.getTransformationMatrix());
         for (let i = 0; i < 6; i++) {
             const p = frustumPlanes[i];
@@ -109,22 +136,17 @@ export class TerrainCuller {
         this.frustumBuffer.updateInt("tileCount", tileCount);
         this.frustumBuffer.update();
 
-        // 3. Bind and Dispatch
         this.computeShader.setUniformBuffer("frustum", this.frustumBuffer);
-        // (Storage buffers are bound persistently during allocation)
 
         const workgroups = Math.ceil(tileCount / 64);
         this.computeShader.dispatch(workgroups, 1, 1);
 
-        // 4. Readback results
         const countData = await this.visibleCountBuffer.read();
         const count = new Uint32Array(countData.buffer)[0];
 
-        // Only slice the exact number of visible items read from the persistent buffer
         const visibleData = await this.visibleTilesBuffer.read();
         const visibleIndices = new Uint32Array(visibleData.buffer).slice(0, count);
 
-        // Map back to original keys
         const visibleKeys = new Set();
         for (let i = 0; i < count; i++) {
             visibleKeys.add(tilesArray[visibleIndices[i]].key);
@@ -132,17 +154,68 @@ export class TerrainCuller {
         return visibleKeys;
     }
 
+    async wasmCullFallbackAsync(camera, tilesArray) {
+        await this.wasmReady;
+        
+        const tileCount = tilesArray.length;
+        const numFloats = tileCount * 8;
+        
+        // Pack into SharedArrayBuffer (Float32Array)
+        // [id, minX, minY, minZ, maxX, maxY, maxZ, pad]
+        // Since id is uint, we cast it to float using a temporary buffer, or just store the index directly as float and parse it back
+        for (let i = 0; i < tileCount; i++) {
+            const t = tilesArray[i];
+            const offset = i * 8;
+            
+            // Hack to pass uint ID through float buffer safely (since indices are small integers, they fit perfectly in f32)
+            const idBuffer = new Uint32Array([i]);
+            const idFloat = new Float32Array(idBuffer.buffer)[0];
+            
+            this.inputView[offset + 0] = idFloat;
+            this.inputView[offset + 1] = t.min.x;
+            this.inputView[offset + 2] = t.min.y;
+            this.inputView[offset + 3] = t.min.z;
+            this.inputView[offset + 4] = t.max.x;
+            this.inputView[offset + 5] = t.max.y;
+            this.inputView[offset + 6] = t.max.z;
+            this.inputView[offset + 7] = 0.0;
+        }
+        
+        const frustumPlanes = BABYLON.Frustum.GetPlanes(camera.getTransformationMatrix());
+        const planesArray = [];
+        for (let i = 0; i < 6; i++) {
+            const p = frustumPlanes[i];
+            planesArray.push(p.normal.x, p.normal.y, p.normal.z, p.d);
+        }
+        
+        return new Promise(resolve => {
+            const handler = (e) => {
+                if (e.data.type === 'CULL_DONE') {
+                    this.worker.removeEventListener('message', handler);
+                    const { numVisibleTiles } = e.data.payload;
+                    const visibleKeys = new Set();
+                    for (let i = 0; i < numVisibleTiles; i++) {
+                        const index = this.outputView[i];
+                        visibleKeys.add(tilesArray[index].key);
+                    }
+                    resolve(visibleKeys);
+                }
+            };
+            this.worker.addEventListener('message', handler);
+            
+            this.worker.postMessage({
+                type: 'CULL_FRUSTUM',
+                payload: {
+                    planes: planesArray,
+                    numFloats: numFloats
+                }
+            });
+        });
+    }
+
     cpuCullFallback(camera, tilesArray) {
         const frustumPlanes = BABYLON.Frustum.GetPlanes(camera.getTransformationMatrix());
         const visibleKeys = new Set();
-        
-        let logFrustum = false;
-        if (!this.hasLoggedFrustum) {
-            console.log(`[CPU Cull] Canvas size: ${camera.getEngine().getRenderWidth()}x${camera.getEngine().getRenderHeight()}`);
-            console.log(`[CPU Cull] First plane: `, frustumPlanes[0].normal.x, frustumPlanes[0].d);
-            this.hasLoggedFrustum = true;
-            logFrustum = true;
-        }
         
         for (const t of tilesArray) {
             let visible = true;
@@ -164,9 +237,6 @@ export class TerrainCuller {
             }
         }
         
-        if (logFrustum) {
-            console.log(`[CPU Cull] Returning ${visibleKeys.size} visible keys. First key: ${[...visibleKeys][0]}`);
-        }
         return visibleKeys;
     }
 }
