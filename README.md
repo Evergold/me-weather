@@ -40,6 +40,35 @@ An interactive, GPU-accelerated client-server weather simulator of Middle-earth.
 
 ---
 
+## 📂 Project File Structure
+
+```text
+me-weather/
+├── .agents/                 # Internal configs and agent rules
+│   ├── rules/               # Markdown-based coding style and convention rules
+│   └── skills/              # Specialized agent instruction sets (e.g., stride-linting)
+├── public/                  # Static assets served by Vite
+│   └── assets/              # Symlink pointing to server/assets/ for client asset requests
+├── server/                  # Rust Axum backend server
+│   ├── assets/              # Master maps, weather textures, and dynamically generated quadtree tiles
+│   │   ├── tiles/           # Automatically generated KTX2 optimized mesh textures
+│   │   ├── heightmap_coarse.png
+│   │   └── normalmap_coarse.jpg
+│   ├── src/                 # Rust server application code
+│   └── build_tiles.py       # QuadTree map slicing and KTX2 compression pipeline script
+├── src/                     # Client-side JavaScript (Vite)
+│   ├── main.js              # Application entrypoint and render loop orchestrator
+│   ├── renderer.js          # WebGPU Babylon.js environment, camera, and lighting setup
+│   ├── terrain.js           # Terrain tile LOD system, geomorphing, and custom shaders
+│   ├── physics.js           # WebAssembly thermodynamics and fluid simulation bindings
+│   └── ui.js                # Control panel interface and HTML DOM updates
+├── docker-compose.yml       # Docker deployment and testing orchestrator configuration
+├── hostconfig.json          # Container orchestration runtime configuration
+└── vite.config.js           # Client bundler configuration
+```
+
+---
+
 ## 🧪 Testing
 
 For full documentation on our automated backend Pytest regression suite and our headless E2E Playwright performance/memory profiling pipeline, please see [TESTING.md](TESTING.md).
