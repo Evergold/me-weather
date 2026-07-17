@@ -3,6 +3,7 @@
 
 import * as BABYLON from '@babylonjs/core';
 import { TerrainCuller } from './TerrainCuller.js';
+import tessellateWgsl from './tessellate.wgsl?raw';
 
 export class WeatherTerrain {
   constructor(scene) {
@@ -603,6 +604,57 @@ export class WeatherTerrain {
       mesh.setEnabled(false);
     }
     
+    // --- WEBGPU COMPUTE TESSELLATION ---
+    let cs = null;
+    let sourceBuffer = null;
+    let targetBuffer = null;
+    let cameraBuffer = null;
+    let csObserver = null;
+    
+    if (this.scene.getEngine().isWebGPU) {
+        const positions = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+        const vertexCount = positions.length / 3;
+        
+        sourceBuffer = new BABYLON.StorageBuffer(this.scene.getEngine(), positions.byteLength);
+        sourceBuffer.update(positions);
+        
+        targetBuffer = new BABYLON.StorageBuffer(this.scene.getEngine(), positions.byteLength);
+        targetBuffer.update(positions);
+        
+        cs = new BABYLON.ComputeShader(`tessellateCS_${key}`, this.scene.getEngine(), { computeSource: tessellateWgsl }, {
+            bindingsMapping: {
+                "camera": { group: 0, binding: 0 },
+                "sourcePositions": { group: 0, binding: 1 },
+                "targetPositions": { group: 0, binding: 2 }
+            }
+        });
+        
+        cameraBuffer = new BABYLON.UniformBuffer(this.scene.getEngine());
+        cameraBuffer.addUniform("camera", 4);
+        
+        cs.setUniformBuffer("camera", cameraBuffer);
+        cs.setStorageBuffer("sourcePositions", sourceBuffer);
+        cs.setStorageBuffer("targetPositions", targetBuffer);
+        
+        const vertexBuffer = new BABYLON.VertexBuffer(
+            this.scene.getEngine(), 
+            targetBuffer.getBuffer(), 
+            BABYLON.VertexBuffer.PositionKind, 
+            true, false, 3
+        );
+        mesh.setVerticesBuffer(vertexBuffer);
+        
+        csObserver = this.scene.onBeforeRenderObservable.add(() => {
+            if (!mesh.isEnabled()) return;
+            const camLocal = camera.globalPosition.subtract(mesh.position);
+            // Dynamic LOD radius for vertex decimation
+            const lodRadius = tileSize * 1.5; 
+            cameraBuffer.updateFloat4("camera", camLocal.x, camLocal.y, camLocal.z, lodRadius);
+            cameraBuffer.update();
+            cs.dispatch(Math.ceil(vertexCount / 64), 1, 1);
+        });
+    }
+    
     const tileObj = {
       mesh,
       material,
@@ -611,7 +663,11 @@ export class WeatherTerrain {
       flowTex: null,
       sps: null,
       spsMesh: null,
-      loaded: false
+      loaded: false,
+      csObserver,
+      sourceBuffer,
+      targetBuffer,
+      cameraBuffer
     };
     
     let texturesLoaded = 0;
@@ -889,6 +945,10 @@ export class WeatherTerrain {
               }
               tile.spsMesh.dispose();
             }
+            if (tile.csObserver) this.scene.onBeforeRenderObservable.remove(tile.csObserver);
+            if (tile.sourceBuffer) tile.sourceBuffer.dispose();
+            if (tile.targetBuffer) tile.targetBuffer.dispose();
+            if (tile.cameraBuffer) tile.cameraBuffer.dispose();
           }
           this.pendingDisposals = [];
         }
