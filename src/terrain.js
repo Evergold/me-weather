@@ -379,82 +379,85 @@ export class WeatherTerrain {
       
       // Schedule the actual mesh swap to happen synchronously right before the next frame's active mesh evaluation.
       // This prevents the 1-frame black blink caused by async microtasks resolving mid-frame!
-      this.scene.onBeforeActiveMeshesEvaluationObservable.addOnce(() => {
-        const isZoomIn = z > this.currentZoom;
-        this.morphStartTime = performance.now();
-        
-        if (isZoomIn) {
-          this.uniforms.uMorphProgress = 0.0;
-          this.morphDirection = 1;
-        } else {
-          this.uniforms.uMorphProgress = 1.0;
-          this.morphDirection = -1;
-        }
-        
-        if (!this.pendingDisposals) this.pendingDisposals = [];
-        if (!this.pendingEnables) this.pendingEnables = [];
-        
-        const keysToDelete = [];
-        for (const [key, tile] of this.activeTiles.entries()) {
-          const parts = key.split("_");
-          const tileZ = parseInt(parts[0]);
+      await new Promise(resolve => {
+        this.scene.onBeforeActiveMeshesEvaluationObservable.addOnce(() => {
+          const isZoomIn = z > this.currentZoom;
+          this.morphStartTime = performance.now();
           
-          if (tileZ !== z || !visibleKeys.has(key)) {
-            if (isZoomIn) {
-              if (tile.mesh) tile.mesh.setEnabled(false); // Hide immediately on zoom in
-            } else {
-              if (tile.mesh) tile.mesh.setEnabled(true); // Keep visible on zoom out to morph down
-            }
-            this.pendingDisposals.push(tile); // Delay disposal until morph completes
-            keysToDelete.push(key);
+          if (isZoomIn) {
+            this.uniforms.uMorphProgress = 0.0;
+            this.morphDirection = 1;
           } else {
-            // Target tile handling
-            if (isZoomIn) {
-              // Zoom In: safely enable target tiles immediately (compilation is complete)
-              if (tile.mesh) tile.mesh.setEnabled(true);
-              if (tile.spsMesh) tile.spsMesh.setEnabled(true);
-              if (tile.material) tile.material.setFloat("uMorphProgress", this.uniforms.uMorphProgress);
-            } else {
-              // Zoom Out: keep new tiles hidden until morph down completes
-              if (tile.mesh) tile.mesh.setEnabled(false);
-              if (tile.spsMesh) tile.spsMesh.setEnabled(false);
-              // New tiles on zoom out should stay at their final shape (1.0)
-              if (tile.material) tile.material.setFloat("uMorphProgress", 1.0);
-              this.pendingEnables.push(tile);
-            }
+            this.uniforms.uMorphProgress = 1.0;
+            this.morphDirection = -1;
           }
-        }
-        
-        if (!isZoomIn) {
-          // Zoom Out: bind the correct newly loaded parent texture to the old children so they can morph down to it
-          for (const oldTile of this.pendingDisposals) {
-            if (oldTile.material && oldTile.mesh) {
-              const parts = oldTile.mesh.name.split("_");
-              const oldZ = parseInt(parts[1]);
-              const oldX = parseInt(parts[2]);
-              const oldY = parseInt(parts[3]);
-              
-              const diff = oldZ - z;
-              const parentX = Math.floor(oldX / Math.pow(2, diff));
-              const parentY = Math.floor(oldY / Math.pow(2, diff));
-              const parentKey = `${z}_${parentX}_${parentY}`;
-              
-              let newParentTex = this.coarseHeightTex;
-              if (this.activeTiles.has(parentKey)) {
-                newParentTex = this.activeTiles.get(parentKey).heightTex;
+          
+          if (!this.pendingDisposals) this.pendingDisposals = [];
+          if (!this.pendingEnables) this.pendingEnables = [];
+          
+          const keysToDelete = [];
+          for (const [key, tile] of this.activeTiles.entries()) {
+            const parts = key.split("_");
+            const tileZ = parseInt(parts[0]);
+            
+            if (tileZ !== z || !visibleKeys.has(key)) {
+              if (isZoomIn) {
+                if (tile.mesh) tile.mesh.setEnabled(false); // Hide immediately on zoom in
+              } else {
+                if (tile.mesh) tile.mesh.setEnabled(true); // Keep visible on zoom out to morph down
               }
-              
-              oldTile.material.setTexture("tHeightPrev", newParentTex);
+              this.pendingDisposals.push(tile); // Delay disposal until morph completes
+              keysToDelete.push(key);
+            } else {
+              // Target tile handling
+              if (isZoomIn) {
+                // Zoom In: safely enable target tiles immediately (compilation is complete)
+                if (tile.mesh) tile.mesh.setEnabled(true);
+                if (tile.spsMesh) tile.spsMesh.setEnabled(true);
+                if (tile.material) tile.material.setFloat("uMorphProgress", this.uniforms.uMorphProgress);
+              } else {
+                // Zoom Out: keep new tiles hidden until morph down completes
+                if (tile.mesh) tile.mesh.setEnabled(false);
+                if (tile.spsMesh) tile.spsMesh.setEnabled(false);
+                // New tiles on zoom out should stay at their final shape (1.0)
+                if (tile.material) tile.material.setFloat("uMorphProgress", 1.0);
+                this.pendingEnables.push(tile);
+              }
             }
           }
-        }
-        
-        for (const key of keysToDelete) {
-          this.activeTiles.delete(key);
-        }
-        
-        this.currentZoom = z;
-        this.initialTilesLoaded = true;
+          
+          if (!isZoomIn) {
+            // Zoom Out: bind the correct newly loaded parent texture to the old children so they can morph down to it
+            for (const oldTile of this.pendingDisposals) {
+              if (oldTile.material && oldTile.mesh) {
+                const parts = oldTile.mesh.name.split("_");
+                const oldZ = parseInt(parts[1]);
+                const oldX = parseInt(parts[2]);
+                const oldY = parseInt(parts[3]);
+                
+                const diff = oldZ - z;
+                const parentX = Math.floor(oldX / Math.pow(2, diff));
+                const parentY = Math.floor(oldY / Math.pow(2, diff));
+                const parentKey = `${z}_${parentX}_${parentY}`;
+                
+                let newParentTex = this.coarseHeightTex;
+                if (this.activeTiles.has(parentKey)) {
+                  newParentTex = this.activeTiles.get(parentKey).heightTex;
+                }
+                
+                oldTile.material.setTexture("tHeightPrev", newParentTex);
+              }
+            }
+          }
+          
+          for (const key of keysToDelete) {
+            this.activeTiles.delete(key);
+          }
+          
+          this.currentZoom = z;
+          this.initialTilesLoaded = true;
+          resolve();
+        });
       });
     }
     } finally {
