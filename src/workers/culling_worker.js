@@ -4,6 +4,8 @@ let engine = null;
 let memory = null;
 let inputPtr = null;
 let inputCapacity = 0;
+let sharedInputView = null;
+let sharedOutputView = null;
 
 self.onmessage = async (e) => {
   const { type, payload } = e.data;
@@ -13,40 +15,41 @@ self.onmessage = async (e) => {
     const wasm = await init();
     memory = wasm.memory;
     engine = new CullingEngine(payload.cullingRadius);
+    
+    // Cache the SharedArrayBuffers provided by the main thread
+    sharedInputView = new Float32Array(payload.inputSab);
+    sharedOutputView = new Float32Array(payload.outputSab);
+    
     self.postMessage({ type: 'INIT_DONE' });
   } 
   else if (type === 'CULL') {
     if (!engine || !memory) return;
 
-    const { localX, localZ, playersData } = payload;
+    const { localX, localZ, numFloats } = payload;
     
     // 1. Resize Wasm memory buffer if incoming player data is larger than current capacity
-    const numFloats = playersData.length;
     if (numFloats > inputCapacity) {
       inputPtr = engine.allocate_input(numFloats);
       inputCapacity = numFloats;
     }
 
-    // 2. Zero-Copy Write: Write JS float data directly into Wasm linear memory
+    // 2. Zero-Copy Write: Pull data from the Main Thread's SharedArrayBuffer directly into Wasm memory
     const wasmInputView = new Float32Array(memory.buffer, inputPtr, numFloats);
-    wasmInputView.set(playersData);
+    wasmInputView.set(sharedInputView.subarray(0, numFloats));
 
     // 3. Execute SIMD-accelerated math entirely in Wasm
     const numVisibleFloats = engine.cull_players(localX, localZ);
 
-    // 4. Zero-Copy Read: Construct a view over the Wasm output memory pointer
+    // 4. Zero-Copy Read: Push data from Wasm memory directly into the Main Thread's Output SharedArrayBuffer
     const outputPtr = engine.get_output_ptr();
     const wasmOutputView = new Float32Array(memory.buffer, outputPtr, numVisibleFloats);
+    sharedOutputView.set(wasmOutputView);
 
-    // 5. Transfer the result back to the main thread.
-    // We copy the result into a new ArrayBuffer to send back to the main thread,
-    // or if we use SharedArrayBuffer we can just notify the main thread!
-    // Since SharedArrayBuffer is tricky with standard Vite configurations sometimes, 
-    // sending a standard Float32Array via structured clone is still incredibly fast because 
-    // the heavy loop and V8 GC spikes were eliminated.
+    // 5. Notify the main thread.
+    // The main thread can instantly read outputSab without ANY serialization/deserialization!
     self.postMessage({
       type: 'CULL_DONE',
-      payload: new Float32Array(wasmOutputView) // We must copy out of Wasm memory before transferring
+      payload: { numVisibleFloats }
     });
   }
 };
