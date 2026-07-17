@@ -138,6 +138,23 @@ export class WeatherTerrain {
       varying vec3 vPosition;
       varying float vHeight;
 
+      // Fast 3D Hash Noise for Procedural Detail
+      float hash(vec3 p) {
+          p = fract(p * 0.3183099 + 0.1);
+          p *= 17.0;
+          return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+      }
+
+      float noise3D(vec3 x) {
+          vec3 i = floor(x);
+          vec3 f = fract(x);
+          f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(mix( hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)),f.x),
+                         mix( hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)),f.x),f.y),
+                     mix(mix( hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)),f.x),
+                         mix( hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)),f.x),f.y),f.z);
+      }
+
       void main() {
         // --- PARALLAX OCCLUSION MAPPING (POM) ---
         // Raymarch the local depth to give flat polygons true volumetric depth
@@ -306,6 +323,41 @@ export class WeatherTerrain {
           float press = 1013.0 - vHeight * 120.0;
           float normPress = (press - 890.0) / 130.0;
           baseColor = mix(vec3(0.25, 0.0, 0.4), vec3(0.85, 0.8, 0.1), clamp(normPress, 0.0, 1.0));
+        }
+
+        // --- TRI-PLANAR PROCEDURAL NOISE (MICRO-DETAIL) ---
+        // Dynamically blend high-frequency procedural noise when zooming extremely close
+        // to hide underlying low-resolution texture pixels and give infinite detail.
+        float detailDist = distance(vPosition, vEyePosition);
+        if (detailDist < 120.0 && isTerrainOrMoisture && !isWaterBody) {
+            float detailFade = clamp(1.0 - (detailDist / 120.0), 0.0, 1.0);
+            
+            // Generate Tri-Planar weights based on vertex normal
+            vec3 blendWeights = abs(normal);
+            blendWeights = (blendWeights - 0.2) * 7.0;
+            blendWeights = max(blendWeights, vec3(0.0));
+            blendWeights /= (blendWeights.x + blendWeights.y + blendWeights.z + 0.0001);
+            
+            // High frequency scaling
+            float scale = 0.5;
+            vec3 posS = vPosition * scale;
+            
+            float nX = noise3D(vec3(posS.y, posS.z, posS.x));
+            float nY = noise3D(vec3(posS.x, posS.z, posS.y));
+            float nZ = noise3D(vec3(posS.x, posS.y, posS.z));
+            
+            float detailNoise = nX * blendWeights.x + nY * blendWeights.y + nZ * blendWeights.z;
+            
+            // Remap noise to add/subtract
+            detailNoise = (detailNoise - 0.5) * 0.4;
+            
+            // Apply subtle brightness variation to diffuse baseColor
+            baseColor += baseColor * detailNoise * detailFade;
+            
+            // Perturb the normal slightly to catch micro-shadows
+            vec3 noisePerturb = vec3(detailNoise) * 0.25 * detailFade;
+            normal = normalize(normal + noisePerturb);
+            diffuse = max(0.12, dot(normal, lightDir));
         }
 
         float hour = timeOfDay / 60.0;
