@@ -713,7 +713,7 @@ export class WeatherTerrain {
     // Animate geomorph progress over 250ms (approx 15 frames)
     // 2. Animate Geomorphing
     if (this.morphStartTime) {
-      const elapsed = timestamp - this.morphStartTime;
+      const elapsed = performance.now() - this.morphStartTime;
       const progress = Math.min(1.0, elapsed / 250.0); // 250ms crossfade
       this.uniforms.uMorphProgress = progress;
       
