@@ -46,9 +46,14 @@ An interactive, GPU-accelerated client-server weather simulator of Middle-earth.
 me-weather/
 ├── .agents/                 # Internal configs and agent rules
 │   ├── rules/               # Markdown-based coding style and convention rules
-│   └── skills/              # Specialized agent instruction sets (e.g., stride-linting)
+│   │   ├── license-headers.md
+│   │   └── puppeteer-cleanup.md
+│   └── skills/              # Specialized agent instruction sets
+│       ├── clean-docker/SKILL.md
+│       └── stride-linting/SKILL.md
 ├── public/                  # Static assets served by Vite
 │   └── assets/              # Symlink pointing to server/assets/ for client asset requests
+├── rust-engine/             # WebAssembly fluid simulation Rust engine (compiled to physics.js)
 ├── server/                  # Rust Axum backend server
 │   ├── assets/              # Master maps, weather textures, and dynamically generated quadtree tiles
 │   │   ├── tiles/           # Automatically generated KTX2 optimized mesh textures
@@ -62,9 +67,23 @@ me-weather/
 │   ├── terrain.js           # Terrain tile LOD system, geomorphing, and custom shaders
 │   ├── physics.js           # WebAssembly thermodynamics and fluid simulation bindings
 │   └── ui.js                # Control panel interface and HTML DOM updates
+├── SSG_U25_LuaDocumentation/# Legacy UI documentation for the original game
+├── tests/                   # Automated E2E Playwright tests and Pytest backend integration tests
+├── third_party_licenses/    # Open-source dependency licenses
+├── .env                     # Environment variables and configuration options
+├── Caddyfile                # Production TLS (HTTPS/WSS) reverse proxy configuration
 ├── docker-compose.yml       # Docker deployment and testing orchestrator configuration
+├── GPU_SOLVER.md            # Documentation for the WebGPU compute shader architecture
 ├── hostconfig.json          # Container orchestration runtime configuration
-└── vite.config.js           # Client bundler configuration
+├── index.html               # Client HTML layout and interface DOM
+├── LICENSE                  # MIT License
+├── package.json             # NPM package and Vite script commands
+├── README.md                # This file
+├── scylla.yaml              # ScyllaDB initialization configuration
+├── STRIDE.md                # Threat modeling assessment
+├── TESTING.md               # Automated testing pipeline documentation
+├── vite.config.js           # Client bundler configuration
+└── WEBRTC_CADDY_SETUP.md    # Production TLS reverse proxy setup guide
 ```
 
 ---
