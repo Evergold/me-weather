@@ -53,14 +53,19 @@ me-weather/
 │       └── stride-linting   # Threat modeling and security auditing framework
 ├── public/                  # Static assets served by Vite
 │   └── assets/              # Symlink pointing to server/assets/ for client asset requests
-├── rust-engine/             # WebAssembly fluid simulation Rust engine (compiled to physics.js)
-├── server/                  # Rust Axum backend server
+├── rust-engine/             # Cargo workspace containing all Rust backend microservices
+│   ├── physics/             # Native WebGPU atmospheric compute shader execution engine
+│   ├── server/              # Axum REST server and WebSocket simulation orchestrator
+│   ├── tile-server/         # High-speed ScyllaDB tile registry and dynamic server meshing
+│   ├── wasm-math/           # WebAssembly bindings for client-side spatial calculations
+│   └── webrtc-router/       # UDP DataChannel router for low-latency peer data streams
+├── server/                  # Python asset processing scripts and static data storage
 │   ├── assets/              # Master maps, weather textures, and dynamically generated quadtree tiles
 │   │   ├── tiles/           # Automatically generated KTX2 optimized mesh textures
 │   │   ├── heightmap_coarse.png
 │   │   └── normalmap_coarse.jpg
-│   ├── src/                 # Rust server application code
-│   └── build_tiles.py       # QuadTree map slicing and KTX2 compression pipeline script
+│   ├── build_tiles.py       # QuadTree map slicing and KTX2 compression pipeline script
+│   └── height_extractor.py  # Script for extracting heightmaps from source game data
 ├── src/                     # Client-side JavaScript (Vite)
 │   ├── main.js              # Application entrypoint and render loop orchestrator
 │   ├── renderer.js          # WebGPU Babylon.js environment, camera, and lighting setup
