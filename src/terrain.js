@@ -116,6 +116,8 @@ export class WeatherTerrain {
       
       uniform int uSeason;
       uniform float uTime;
+      uniform vec3 vEyePosition;
+      uniform sampler2D tHeight;
 
       varying vec2 vUv;
       varying vec2 vUvGlobal;
@@ -124,11 +126,53 @@ export class WeatherTerrain {
       varying float vHeight;
 
       void main() {
+        // --- PARALLAX OCCLUSION MAPPING (POM) ---
+        // Raymarch the local depth to give flat polygons true volumetric depth
+        vec3 viewDir = normalize(vEyePosition - vPosition);
+        
+        // Approximate Tangent Space (Terrain is mostly XZ flat)
+        vec3 tangent = vec3(1.0, 0.0, 0.0);
+        vec3 binormal = vec3(0.0, 0.0, 1.0);
+        vec3 vertexNormal = vec3(0.0, 1.0, 0.0);
+        mat3 tbn = mat3(tangent, binormal, vertexNormal);
+        
+        vec3 viewDirTS = normalize(viewDir * tbn);
+        
+        // POM Setup
+        float numLayers = mix(32.0, 8.0, abs(dot(vec3(0.0, 1.0, 0.0), viewDir))); // More layers at glancing angles
+        float layerDepth = 1.0 / numLayers;
+        float currentLayerDepth = 0.0;
+        
+        // Parallax depth scale
+        float parallaxScale = 0.015; 
+        vec2 P = viewDirTS.xz * parallaxScale; 
+        vec2 deltaTexCoords = P / numLayers;
+        
+        vec2 texCoords = vUv;
+        // Generate pseudo-micro-depth from the flowmap and normal map to give rocks/rivers deep ridges
+        float currentDepthMapValue = 1.0 - texture2D(tHeight, clamp(texCoords, 0.002, 0.998)).r;
+        
+        // Raymarch loop
+        for(int i = 0; i < 32; i++) {
+            if (currentLayerDepth >= currentDepthMapValue) break;
+            texCoords -= deltaTexCoords;
+            currentDepthMapValue = 1.0 - texture2D(tHeight, clamp(texCoords, 0.002, 0.998)).r;
+            currentLayerDepth += layerDepth;
+        }
+        
+        // Relief Mapping Refinement (Binary Search)
+        vec2 prevTexCoords = texCoords + deltaTexCoords;
+        float afterDepth  = currentDepthMapValue - currentLayerDepth;
+        float beforeDepth = (1.0 - texture2D(tHeight, clamp(prevTexCoords, 0.002, 0.998)).r) - currentLayerDepth + layerDepth;
+        float weight = afterDepth / (afterDepth - beforeDepth);
+        vec2 finalTexCoords = prevTexCoords * weight + texCoords * (1.0 - weight);
+        
+        vec2 pomUv = clamp(finalTexCoords, 0.002, 0.998);
+        
         vec3 normal = normalize(vNormal);
         
-        // Sample static hydrology flowmap: R/G are X/Y slope directions, B is flow accumulation (riverbed width)
-        vec2 clampedUv = clamp(vUv, 0.002, 0.998);
-        vec3 flowData = texture2D(tFlow, clampedUv).rgb;
+        // Sample static hydrology flowmap with POM UVs
+        vec3 flowData = texture2D(tFlow, pomUv).rgb;
         vec2 flowDir = normalize(flowData.rg * 2.0 - 1.0 + 1e-5);
         float flowStrength = flowData.b;
         
@@ -143,10 +187,10 @@ export class WeatherTerrain {
         // Glacial Shear: Extremely slow movement down the slope gradient
         vec2 glacierOffset = flowDir * fract(uTime * 0.002) * 0.15;
         
-        // Sample normal maps at top-level (uniform control flow) to satisfy WebGPU/WGSL requirements
-        vec3 n1 = texture2D(tNormal, clamp(vUv - uvOffset1, 0.002, 0.998)).rgb * 2.0 - 1.0;
-        vec3 n2 = texture2D(tNormal, clamp(vUv - uvOffset2, 0.002, 0.998)).rgb * 2.0 - 1.0;
-        vec3 nGlacier = texture2D(tNormal, clamp(vUv - glacierOffset, 0.002, 0.998)).rgb * 2.0 - 1.0;
+        // Sample normal maps at top-level with POM UVs
+        vec3 n1 = texture2D(tNormal, clamp(pomUv - uvOffset1, 0.002, 0.998)).rgb * 2.0 - 1.0;
+        vec3 n2 = texture2D(tNormal, clamp(pomUv - uvOffset2, 0.002, 0.998)).rgb * 2.0 - 1.0;
+        vec3 nGlacier = texture2D(tNormal, clamp(pomUv - glacierOffset, 0.002, 0.998)).rgb * 2.0 - 1.0;
 
         // Rivers are carved where flow accumulation is high (Blue channel > 0.15)
         bool isWaterBody = false;
@@ -507,7 +551,7 @@ export class WeatherTerrain {
           "uScale", "uMorphProgress", "activeLayer", "timeOfDay",
           "uLightDir", "uLightColor", "uTileOffset", "uTileScale",
           "uWeatherOffset", "uWeatherScale", "uIsZoomed",
-          "uSeason", "uTime", "uParentUvScale", "uParentUvOffset"
+          "uSeason", "uTime", "uParentUvScale", "uParentUvOffset", "vEyePosition"
         ],
         samplers: ["tHeight", "tHeightPrev", "tNormal", "tWeather", "tFlow"]
       }
@@ -525,6 +569,11 @@ export class WeatherTerrain {
     material.setFloat("uWeatherScale", this.uniforms.uWeatherScale);
     material.setInt("uSeason", this.uniforms.uSeason);
     material.setFloat("uTime", this.uniforms.uTime);
+    
+    // Register before render binding for dynamic camera position
+    mesh.onBeforeRenderObservable.add(() => {
+        material.setVector3("vEyePosition", camera.globalPosition);
+    });
     
     // Bind tile-specific mapping offsets
     const tilesCount = Math.pow(2, z);
