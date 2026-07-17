@@ -150,20 +150,20 @@ export class WeatherTerrain {
         
         vec2 texCoords = vUv;
         // Generate pseudo-micro-depth from the flowmap and normal map to give rocks/rivers deep ridges
-        float currentDepthMapValue = 1.0 - texture2D(tHeight, clamp(texCoords, 0.002, 0.998)).r;
+        float currentDepthMapValue = 1.0 - textureLod(tHeight, clamp(texCoords, 0.002, 0.998), 0.0).r;
         
         // Raymarch loop
         for(int i = 0; i < 32; i++) {
             if (currentLayerDepth >= currentDepthMapValue) break;
             texCoords -= deltaTexCoords;
-            currentDepthMapValue = 1.0 - texture2D(tHeight, clamp(texCoords, 0.002, 0.998)).r;
+            currentDepthMapValue = 1.0 - textureLod(tHeight, clamp(texCoords, 0.002, 0.998), 0.0).r;
             currentLayerDepth += layerDepth;
         }
         
         // Relief Mapping Refinement (Binary Search)
         vec2 prevTexCoords = texCoords + deltaTexCoords;
         float afterDepth  = currentDepthMapValue - currentLayerDepth;
-        float beforeDepth = (1.0 - texture2D(tHeight, clamp(prevTexCoords, 0.002, 0.998)).r) - currentLayerDepth + layerDepth;
+        float beforeDepth = (1.0 - textureLod(tHeight, clamp(prevTexCoords, 0.002, 0.998), 0.0).r) - currentLayerDepth + layerDepth;
         float weight = afterDepth / max(afterDepth - beforeDepth, 0.0001);
         vec2 finalTexCoords = prevTexCoords * weight + texCoords * (1.0 - weight);
         
