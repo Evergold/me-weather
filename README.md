@@ -9,7 +9,7 @@ An interactive, GPU-accelerated client-server weather simulator of Middle-earth.
 ## ✨ Features
 
 ### 🌍 World & Terrain
-*   **Server-Side Terrain Support**: The backend serves master elevation maps (`heightmap_coarse.png` / `normalmap_coarse.jpg`) and dynamically slices high-res tiles on startup to ensure data integrity.
+*   **Server-Side Terrain Support**: The backend serves master elevation maps (`heightmap_coarse.png` / `normalmap_coarse.png`) and dynamically slices high-res tiles on startup to ensure data integrity.
 *   **Custom Terrain Shader**: Renders a 3D displaced terrain mesh in WebGPU / WebGL 2 (Babylon.js). Toggling the *Moisture overlay* flows smooth royal blue vapor directly over the geographic terrain colors.
 *   **Landmarks & Custom Pins**: Weather stations render 3D rings at their exact terrain elevation. Right-click to place custom map pins that automatically persist across page reloads via `localStorage`.
 
@@ -65,7 +65,7 @@ me-weather/
 │   ├── assets/              # Master maps, weather textures, and dynamically generated quadtree tiles
 │   │   ├── tiles/           # Automatically generated KTX2 optimized mesh textures
 │   │   ├── heightmap_coarse.png
-│   │   └── normalmap_coarse.jpg
+│   │   └── normalmap_coarse.png
 │   ├── build_tiles.py       # QuadTree map slicing and KTX2 compression pipeline script
 │   ├── generate_flowmap.py  # Computes 2D fluid vectors from elevation gradients
 │   └── height_extractor.py  # Script for extracting heightmaps from source game data
@@ -131,7 +131,7 @@ uv pip install -r requirements.txt
 ```
 
 ### 2.5. Environment Art Tile Generation (Required for new maps)
-Whenever you update the master `heightmap_coarse.png` or `normalmap_coarse.jpg` in `server/assets/`, you must rebuild the GPU-optimized KTX2 tiles before launching the client:
+Whenever you update the master `heightmap_coarse.png` or `normalmap_coarse.png` in `server/assets/`, you must rebuild the GPU-optimized KTX2 tiles before launching the client:
 ```bash
 cd server
 python build_tiles.py
