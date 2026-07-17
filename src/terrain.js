@@ -343,8 +343,8 @@ export class WeatherTerrain {
       }
     }
     
-    // Check if we actually need a transition swap (zoom level changed or old tiles exist)
-    let needsSwap = this.currentZoom !== z;
+    // Check if we actually need a transition swap (zoom level changed, old tiles exist, or initial load)
+    let needsSwap = this.currentZoom !== z || !this.initialTilesLoaded;
     if (!needsSwap) {
       for (const key of this.activeTiles.keys()) {
         const parts = key.split("_");
