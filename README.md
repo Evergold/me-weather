@@ -55,7 +55,6 @@ me-weather/
 │       ├── clean-docker     # Instructions for purging unused database containers
 │       └── stride-linting   # Threat modeling and security auditing framework
 ├── public/                  # Static assets served by Vite
-│   └── assets/              # Symlink pointing to server/assets/ for client asset requests
 ├── rust-engine/             # Cargo workspace containing all Rust backend microservices
 │   ├── physics/             # Native WebGPU atmospheric compute shader execution engine
 │   ├── server/              # Axum REST server and WebSocket simulation orchestrator
