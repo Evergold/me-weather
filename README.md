@@ -63,9 +63,11 @@ me-weather/
 │   └── webrtc-router/       # UDP DataChannel router for low-latency peer data streams
 ├── server/                  # Python asset processing scripts and static data storage
 │   ├── assets/              # Master maps, weather textures, and dynamically generated quadtree tiles
-│   │   ├── tiles/           # Automatically generated KTX2 optimized mesh textures
-│   │   ├── heightmap_coarse.png
-│   │   └── normalmap_coarse.png
+│   │   ├── flowmap.png          # Generated 2D fluid vectors for WebGPU particles
+│   │   ├── generated-heights/   # Raw 16-bit regional heightmaps extracted from cells
+│   │   ├── heightmap.png        # Source of truth 16-bit master elevation map
+│   │   ├── normalmap.png        # Source of truth high-res master terrain angle map
+│   │   └── tiles/               # Dynamically generated 1024x1024 quadtree mesh sub-tiles
 │   ├── build_tiles.py       # QuadTree map slicing and KTX2 compression pipeline script
 │   ├── generate_flowmap.py  # Computes 2D fluid vectors from elevation gradients
 │   └── height_extractor.py  # Script for extracting heightmaps from cells
