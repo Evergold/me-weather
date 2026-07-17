@@ -30,9 +30,9 @@ def generate_flowmap(heightmap_path, output_path, strength=3.0):
     r = ((flow_x * 0.5 + 0.5) * 255).astype(np.uint8)
     g = ((flow_y * 0.5 + 0.5) * 255).astype(np.uint8)
     
-    # Blue channel can be used for flow magnitude or left neutral (128 or 255)
-    # We will set it to 128 (neutral Z)
-    b = np.full_like(r, 128)
+    # Blue channel represents flow accumulation (riverbed width).
+    # Setting it to 0 prevents the shader from treating the entire map as a flooded river.
+    b = np.full_like(r, 0)
     
     flow_rgb = np.stack([r, g, b], axis=-1)
     
