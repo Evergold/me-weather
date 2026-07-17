@@ -42,6 +42,9 @@ An interactive, GPU-accelerated client-server weather simulator of Middle-earth.
 
 ## 📂 Project File Structure
 
+<details>
+<summary>Click to expand</summary>
+
 ```text
 me-weather/
 ├── .agents/                 # Internal configs and agent rules
@@ -88,6 +91,8 @@ me-weather/
 ├── vite.config.js           # Client bundler configuration
 └── WEBRTC_CADDY_SETUP.md    # Production TLS reverse proxy setup guide
 ```
+
+</details>
 
 ---
 
