@@ -143,20 +143,22 @@ export class WeatherRenderer {
   initPostProcessing() {
     // --- Screen Space Global Illumination (via SSAO2) ---
     // Simulates ambient light bouncing and micro-shadowing in terrain crevices
-    this.ssao = new BABYLON.SSAO2RenderingPipeline("ssao", this.scene, 0.75, [this.camera]);
-    this.ssao.radius = 4.5; // Wider radius to simulate terrain-scale bounced GI
+    // OPTIMIZATION: Reduced samples from 16 to 8 and disabled expensiveBlur for performance
+    this.ssao = new BABYLON.SSAO2RenderingPipeline("ssao", this.scene, 0.5, [this.camera]); // Run at 50% resolution
+    this.ssao.radius = 3.0; 
     this.ssao.totalStrength = 1.2;
-    this.ssao.expensiveBlur = true;
-    this.ssao.samples = 16;
-    this.ssao.maxZ = 1500; // Only calculate up close
+    this.ssao.expensiveBlur = false;
+    this.ssao.samples = 8;
+    this.ssao.maxZ = 800; // Only calculate up close
     
     // --- Screen Space Reflections (SSR) ---
     // Simulates specular light bouncing on water and wet rock
+    // OPTIMIZATION: Run SSR at lower quality to maintain 60 FPS
     this.ssr = new BABYLON.SSRRenderingPipeline("ssr", this.scene, [this.camera], false, BABYLON.Constants.TEXTURETYPE_UNSIGNED_BYTE);
     this.ssr.thickness = 0.1;
-    this.ssr.step = 2;
-    this.ssr.maxDistance = 500;
-    this.ssr.enableSmoothReflections = true;
+    this.ssr.step = 4; // Increased step size (lower quality, higher perf)
+    this.ssr.maxDistance = 200; // Lower max distance
+    this.ssr.enableSmoothReflections = false; // Disable smooth blur on reflections
   }
 
   initLights() {
