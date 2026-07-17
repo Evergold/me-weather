@@ -112,7 +112,7 @@ export class WeatherUI {
       if (progressBar) {
         progressBar.style.transform = `scaleX(${progress / 100})`;
       }
-      if (this.renderer && this.renderer.terrain && this.renderer.terrain.isCompiling) {
+      if (progress === 100 || (this.renderer && this.renderer.terrain && this.renderer.terrain.isCompiling)) {
         const cz = document.querySelector('.connecting-zone');
         if (cz && !cz.classList.contains('finalizing')) {
           cz.classList.add('finalizing');
