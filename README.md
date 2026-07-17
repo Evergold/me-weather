@@ -83,7 +83,7 @@ me-weather/
 ├── docker-compose.yml       # Docker deployment and testing orchestrator configuration
 ├── GPU_SOLVER.md            # Documentation for the WebGPU compute shader architecture
 ├── hostconfig.json          # Container orchestration runtime configuration
-├── index.html               # Client HTML layout and interface DOM
+├── index.html               # Client frontend layout and interface DOM
 ├── LICENSE                  # Project licenses
 ├── package.json             # NPM package and Vite script commands
 ├── README.md                # This file
