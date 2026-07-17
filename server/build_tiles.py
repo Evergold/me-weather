@@ -34,7 +34,7 @@ def generate_png_tiles(input_img_path, map_type, use_ktx2=False):
                 crop_x = tx * TILE_SIZE
                 crop_y = ty * TILE_SIZE
                 
-                out_dir = f"../public/assets/tiles/{z}/{map_type}"
+                out_dir = f"assets/tiles/{z}/{map_type}"
                 os.makedirs(out_dir, exist_ok=True)
                 
                 # Crop image precisely along tile boundaries, adding 1 pixel overlap to prevent geometry seams!
@@ -52,6 +52,12 @@ def generate_png_tiles(input_img_path, map_type, use_ktx2=False):
                 out_png = f"{out_dir}/{tx}_{ty}.png"
                 cropped.save(out_png)
                 generated_pngs.append(out_png)
+                
+                # Also save the z=0 (1024x1024) tile directly as the coarse map for the Rust tile-server
+                if z == 0:
+                    coarse_path = f"assets/{map_type}map_coarse.png"
+                    cropped.save(coarse_path)
+                    print(f"Generated core coarse map: {coarse_path}")
 
     if use_ktx2 and generated_pngs:
         print(f"Compressing {len(generated_pngs)} PNGs to KTX2 format using basisu...")

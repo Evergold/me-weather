@@ -19,7 +19,7 @@ pub fn build_router() -> Router {
 
     // Load master coarse maps (simulating the load-on-demand cache)
     let heightmap_filename = std::env::var("HEIGHTMAP_FILENAME").unwrap_or_else(|_| "heightmap_coarse.png".to_string());
-    let normalmap_filename = std::env::var("NORMALMAP_FILENAME").unwrap_or_else(|_| "normalmap_coarse.jpg".to_string());
+    let normalmap_filename = std::env::var("NORMALMAP_FILENAME").unwrap_or_else(|_| "normalmap_coarse.png".to_string());
     
     let heightmap_path = format!("../server/assets/{}", heightmap_filename);
     let normalmap_path = format!("../server/assets/{}", normalmap_filename);
