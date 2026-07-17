@@ -423,20 +423,25 @@ export class WeatherTerrain {
       }
       
       if (!isZoomIn) {
-        // Zoom Out: bind the newly loaded parent texture to the old children so they can morph down to it
-        let newParentTex = null;
-        for (const key of visibleKeys) {
-          const tile = this.activeTiles.get(key);
-          if (tile && tile.heightTex) {
-            newParentTex = tile.heightTex;
-            break;
-          }
-        }
-        if (newParentTex) {
-          for (const oldTile of this.pendingDisposals) {
-            if (oldTile.material) {
-              oldTile.material.setTexture("tHeightPrev", newParentTex);
+        // Zoom Out: bind the correct newly loaded parent texture to the old children so they can morph down to it
+        for (const oldTile of this.pendingDisposals) {
+          if (oldTile.material && oldTile.mesh) {
+            const parts = oldTile.mesh.name.split("_");
+            const oldZ = parseInt(parts[1]);
+            const oldX = parseInt(parts[2]);
+            const oldY = parseInt(parts[3]);
+            
+            const diff = oldZ - z;
+            const parentX = Math.floor(oldX / Math.pow(2, diff));
+            const parentY = Math.floor(oldY / Math.pow(2, diff));
+            const parentKey = `${z}_${parentX}_${parentY}`;
+            
+            let newParentTex = this.coarseHeightTex;
+            if (this.activeTiles.has(parentKey)) {
+              newParentTex = this.activeTiles.get(parentKey).heightTex;
             }
+            
+            oldTile.material.setTexture("tHeightPrev", newParentTex);
           }
         }
       }
