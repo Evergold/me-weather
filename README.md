@@ -22,7 +22,7 @@ An interactive, GPU-accelerated client-server weather simulator of Middle-earth.
 ### ⚡ Networking & Backend Architecture
 *   **Unified Client-Server Process**: A monolithic Rust Axum server orchestrates the entire physics simulation, WebSockets, and natively hosts the compiled Vite client assets from a single port.
 *   **WebGPU Native Compute (`wgpu-rs`)**: Sync-requests Vulkan/EGL adapters natively on the host server, directly executing atmospheric compute shaders on backend GPU hardware with zero overhead.
-*   **Dynamic Server Meshing**: Uses ScyllaDB as a decentralized boundary-registry. Multiple physical servers can dynamically claim tiles based on their available VRAM, natively executing compute in parallel and exchanging edge boundary data to simulate entire continents.
+*   **Dynamic Server Meshing**: Uses ScyllaDB as a decentralized boundary-registry for match-making. Multiple physical servers can dynamically claim tiles based on their available VRAM, natively executing compute in parallel and exchanging edge boundary data via direct WebRTC DataChannels to simulate entire continents.
 *   **Quantized Binary Telemetry**: Streams data over binary WebSockets (and UDP WebRTC DataChannels) packed tightly into quantized Float16 ArrayBuffers, drastically cutting bandwidth and eliminating JSON parsing stalls.
 *   **Server-Authoritative Collision**: Employs a hybrid 2D heightmap array and 3D Rust Octree collision system to mathematically validate all movement in real-time, preventing clients from cheating or teleporting.
 
@@ -34,9 +34,9 @@ An interactive, GPU-accelerated client-server weather simulator of Middle-earth.
 *   **Babylon.js (WebGPU / WebGL 2)** — Client-side 3D terrain rendering and dynamic weather systems.
 *   **Rust & Axum** — Blazing-fast backend REST server and Game State Authority WebSockets.
 *   **WebAssembly (wasm-bindgen)** — Client-side spatial math and Delta Movement Culling bypassing JS garbage collection.
-*   **webrtc-rs** — Massive-scale UDP DataChannel routing for low-latency peer data.
+*   **webrtc-rs** — Massive-scale UDP DataChannel routing for low-latency peer data streams to clients, and high-speed server-to-server data exchange for the Dynamic Server Meshing pipeline.
 *   **wgpu-rs** — Native backend physics engine executing WebGPU atmospheric compute shaders with zero overhead.
-*   **ScyllaDB** — Distributed database acting as a high-speed central registry for Dynamic Server Meshing and 5-minute persistent world-state snapshots.
+*   **ScyllaDB** — Distributed database acting as the connection signaling registry (matchmaker) for the WebRTC mesh, and the hard-drive persistence layer for 5-minute world-state snapshots.
 
 ---
 
