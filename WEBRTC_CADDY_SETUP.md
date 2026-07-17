@@ -1,6 +1,6 @@
 # 🌐 High-Performance WebRTC & Caddy (TLS 1.3) Deployment Guide
 
-This document details the configuration for integrating **WebRTC Data Channels (SCTP over DTLS over UDP)** for real-time player telemetry, alongside **Caddy** configured for **maximum TLS handshake performance**.
+This document details the configuration for integrating **WebRTC Data Channels (SCTP over DTLS over UDP)** for real-time player telemetry and server meshing, alongside **Caddy** configured for **maximum TLS handshake performance**.
 
 ---
 
@@ -37,7 +37,7 @@ localhost {
     # 3. HTTP Keep-Alive tuning to prevent re-handshaking during tile requests
     # Caddy does this automatically by keeping TCP connections open for subsequent requests.
 
-    # 4. Proxy multiplexed WebSockets to the FastAPI server
+    # 4. Proxy multiplexed WebSockets to the Rust Actix-Web server
     reverse_proxy /ws/* 127.0.0.1:8000 {
         # Maintain keep-alive connections to backend
         transport http {
@@ -55,13 +55,13 @@ localhost {
 
 ## 🎮 2. WebRTC Data Channel Architecture
 
-WebRTC provides client-server unreliable UDP-like streams in the browser. 
+WebRTC provides client-server (and server-server) unreliable UDP-like streams. 
 
-Because it is encrypted via mandatory DTLS, it satisfies user privacy requirements automatically without additional TLS overhead in Python.
+Because it is encrypted via mandatory DTLS, it satisfies user privacy requirements automatically without additional TLS overhead. Furthermore, we leverage WebRTC Data Channels for our **server meshing** architecture, allowing horizontally scaled backend instances to stream player states, cross-border interactions, and Iterative Tiled Compute synchronization directly to one another peer-to-peer at high frequency without a central server bottleneck.
 
-### WebRTC Connection Flow
+### A. Client-Server Connection Flow
 ```text
-  [ CLIENT ]                                     [ SERVER (FastAPI) ]
+  [ CLIENT ]                                     [ SERVER (Rust Actix-Web) ]
       │                                                   │
       │ 1. HTTP Upgrade (WSS)                             │
       ├──────────────────────────────────────────────────>│
@@ -86,18 +86,27 @@ Because it is encrypted via mandatory DTLS, it satisfies user privacy requiremen
       │<=================================================>│
 ```
 
+### B. Server-Server Meshing Flow
+WebRTC Data Channels are established between backend instances to maintain a globally synchronized state:
+1. When a server instance spins up, it queries ScyllaDB for sibling nodes.
+2. It acts as a WebRTC Peer, completing the ICE/SDP handshake with other instances over internal VPC networks.
+3. Node-to-node WebRTC channels broadcast `Player Enter/Exit Region` and `Telemetry Handoff` events, allowing players to traverse server boundaries flawlessly without a visible loading screen or connection drop.
+
 ---
 
 ## 🛠️ 3. Software Components
 
-### A. Python Backend (`server/main.py`)
-To handle WebRTC peer connections in Python, we use the `aiortc` library.
+### A. Rust Backend (`server/src/main.rs`)
+To handle WebRTC peer connections in Rust, we use the `webrtc-rs` crate.
 1.  **Signaling Handler**: Add a listener on the `/ws/control/{client_id}` endpoint for `{"type": "offer", "sdp": "..."}` messages.
 2.  **RTC Peer Connection**: On receiving an offer, initialize a `RTCPeerConnection` instance.
 3.  **Data Channel**: Listen for the `@pc.on("datachannel")` event:
-    *   Set up a message handler to instantly parse player position bytes using `struct.unpack('<4f', message)` (16 bytes representing $x, y, z, rot$).
-4.  **$O(N)$ Broadcaster**: The server broadcasts player telemetry using a decoupled `asyncio.Task` ticking exactly at 30 FPS, compiling a tight binary payload of all active ground-level players and pushing it over the open datachannels.
-4.  **Send Answer**: Respond with a JSON answer back over the `/ws/control` WebSocket.
+    *   Set up a message handler to instantly parse player position bytes using `f32::from_le_bytes` (16 bytes representing $x, y, z, rot$).
+4.  **Spatial-Partitioned Telemetry Broadcaster**:
+    *   The server broadcasts player telemetry using an improved, decoupled `tokio::task` ticking exactly at 30 FPS.
+    *   **Batching & Culling**: It uses distance-based interest management to compile a tight binary payload, culling entities outside of a player's view distance.
+    *   **Meshing Integration**: Player states are injected from sibling nodes via the server-to-server WebRTC channels, merged into the local tick loop, and broadcasted to local connected clients simultaneously.
+5.  **Send Answer**: Respond with a JSON answer back over the `/ws/control` WebSocket.
 
 ### B. Client Frontend (`src/physics.js`)
 1.  **Initialize Connection**:
