@@ -87,16 +87,28 @@ export class WeatherTerrain {
         float height = mix(hPrev, hTarget, uMorphProgress);
         vHeight = height;
         
-        vec3 pos = position;
-        pos.y = height * uScale;
+        vec3 finalPos = position;
         
-        vec4 worldPos = world * vec4(pos, 1.0);
+        // --- DYNAMIC TESSELLATION LOD (Vertex Shader) ---
+        // Mathematically snap distant vertices into identical positions.
+        // The hardware rasterizer instantly culls the resulting zero-area triangles at zero cost!
+        vec3 worldPosCheck = (world * vec4(finalPos, 1.0)).xyz;
+        float distToCam = distance(worldPosCheck, vEyePosition);
+        if (distToCam > 1000.0) {
+            float snapSize = distToCam * 0.005; // Aggressive decimation at distance
+            finalPos.x = floor(finalPos.x / snapSize + 0.5) * snapSize;
+            finalPos.z = floor(finalPos.z / snapSize + 0.5) * snapSize;
+        }
+
+        finalPos.y = height * uScale;
+        
+        vec4 worldPos = world * vec4(finalPos, 1.0);
         vPosition = worldPos.xyz;
         
         vec3 n = textureLod(tNormal, clampedUv, 0.0).rgb * 2.0 - 1.0;
         vNormal = normalize((world * vec4(n, 0.0)).xyz);
         
-        gl_Position = worldViewProjection * vec4(pos, 1.0);
+        gl_Position = worldViewProjection * vec4(finalPos, 1.0);
       }
     `;
 
@@ -604,57 +616,6 @@ export class WeatherTerrain {
       mesh.setEnabled(false);
     }
     
-    // --- WEBGPU COMPUTE TESSELLATION ---
-    let cs = null;
-    let sourceBuffer = null;
-    let targetBuffer = null;
-    let cameraBuffer = null;
-    let csObserver = null;
-    
-    if (this.scene.getEngine().isWebGPU) {
-        const positions = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
-        const vertexCount = positions.length / 3;
-        
-        sourceBuffer = new BABYLON.StorageBuffer(this.scene.getEngine(), positions.byteLength);
-        sourceBuffer.update(positions);
-        
-        targetBuffer = new BABYLON.StorageBuffer(this.scene.getEngine(), positions.byteLength);
-        targetBuffer.update(positions);
-        
-        cs = new BABYLON.ComputeShader(`tessellateCS_${key}`, this.scene.getEngine(), { computeSource: tessellateWgsl }, {
-            bindingsMapping: {
-                "camera": { group: 0, binding: 0 },
-                "sourcePositions": { group: 0, binding: 1 },
-                "targetPositions": { group: 0, binding: 2 }
-            }
-        });
-        
-        cameraBuffer = new BABYLON.UniformBuffer(this.scene.getEngine());
-        cameraBuffer.addUniform("camera", 4);
-        
-        cs.setUniformBuffer("camera", cameraBuffer);
-        cs.setStorageBuffer("sourcePositions", sourceBuffer);
-        cs.setStorageBuffer("targetPositions", targetBuffer);
-        
-        const vertexBuffer = new BABYLON.VertexBuffer(
-            this.scene.getEngine(), 
-            targetBuffer.getBuffer(), 
-            BABYLON.VertexBuffer.PositionKind, 
-            true, false, 3
-        );
-        mesh.setVerticesBuffer(vertexBuffer);
-        
-        csObserver = this.scene.onBeforeRenderObservable.add(() => {
-            if (!mesh.isEnabled()) return;
-            const camLocal = camera.globalPosition.subtract(mesh.position);
-            // Dynamic LOD radius for vertex decimation
-            const lodRadius = tileSize * 1.5; 
-            cameraBuffer.updateFloat4("camera", camLocal.x, camLocal.y, camLocal.z, lodRadius);
-            cameraBuffer.update();
-            cs.dispatch(Math.ceil(vertexCount / 64), 1, 1);
-        });
-    }
-    
     const tileObj = {
       mesh,
       material,
@@ -663,11 +624,7 @@ export class WeatherTerrain {
       flowTex: null,
       sps: null,
       spsMesh: null,
-      loaded: false,
-      csObserver,
-      sourceBuffer,
-      targetBuffer,
-      cameraBuffer
+      loaded: false
     };
     
     let texturesLoaded = 0;
@@ -945,10 +902,6 @@ export class WeatherTerrain {
               }
               tile.spsMesh.dispose();
             }
-            if (tile.csObserver) this.scene.onBeforeRenderObservable.remove(tile.csObserver);
-            if (tile.sourceBuffer) tile.sourceBuffer.dispose();
-            if (tile.targetBuffer) tile.targetBuffer.dispose();
-            if (tile.cameraBuffer) tile.cameraBuffer.dispose();
           }
           this.pendingDisposals = [];
         }
