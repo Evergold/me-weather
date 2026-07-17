@@ -46,11 +46,11 @@ An interactive, GPU-accelerated client-server weather simulator of Middle-earth.
 me-weather/
 ├── .agents/                 # Internal configs and agent rules
 │   ├── rules/               # Markdown-based coding style and convention rules
-│   │   ├── license-headers.md
-│   │   └── puppeteer-cleanup.md
+│   │   ├── license-headers
+│   │   └── puppeteer-cleanup
 │   └── skills/              # Specialized agent instruction sets
-│       ├── clean-docker/SKILL.md
-│       └── stride-linting/SKILL.md
+│       ├── clean-docker
+│       └── stride-linting
 ├── public/                  # Static assets served by Vite
 │   └── assets/              # Symlink pointing to server/assets/ for client asset requests
 ├── rust-engine/             # WebAssembly fluid simulation Rust engine (compiled to physics.js)
