@@ -410,15 +410,37 @@ export class WeatherTerrain {
             // Zoom In: safely enable target tiles immediately (compilation is complete)
             if (tile.mesh) tile.mesh.setEnabled(true);
             if (tile.spsMesh) tile.spsMesh.setEnabled(true);
+            if (tile.material) tile.material.setFloat("uMorphProgress", this.uniforms.uMorphProgress);
           } else {
             // Zoom Out: keep new tiles hidden until morph down completes
             if (tile.mesh) tile.mesh.setEnabled(false);
             if (tile.spsMesh) tile.spsMesh.setEnabled(false);
+            // New tiles on zoom out should stay at their final shape (1.0)
+            if (tile.material) tile.material.setFloat("uMorphProgress", 1.0);
             this.pendingEnables.push(tile);
           }
-          if (tile.material) tile.material.setFloat("uMorphProgress", this.uniforms.uMorphProgress);
         }
       }
+      
+      if (!isZoomIn) {
+        // Zoom Out: bind the newly loaded parent texture to the old children so they can morph down to it
+        let newParentTex = null;
+        for (const key of visibleKeys) {
+          const tile = this.activeTiles.get(key);
+          if (tile && tile.heightTex) {
+            newParentTex = tile.heightTex;
+            break;
+          }
+        }
+        if (newParentTex) {
+          for (const oldTile of this.pendingDisposals) {
+            if (oldTile.material) {
+              oldTile.material.setTexture("tHeightPrev", newParentTex);
+            }
+          }
+        }
+      }
+      
       for (const key of keysToDelete) {
         this.activeTiles.delete(key);
       }
@@ -738,10 +760,13 @@ export class WeatherTerrain {
       }
       this.uniforms.uMorphProgress = progress;
       
-      // Update both active and pending tiles to animate zoom-out seamlessly
-      for (const tile of this.activeTiles.values()) {
-        if (tile.material) tile.material.setFloat("uMorphProgress", progress);
+      // Animate active tiles ONLY if zooming in. If zooming out, active tiles are the target (hidden) and stay at 1.0
+      if (this.morphDirection === 1) {
+        for (const tile of this.activeTiles.values()) {
+          if (tile.material) tile.material.setFloat("uMorphProgress", progress);
+        }
       }
+      
       if (this.pendingDisposals) {
         for (const tile of this.pendingDisposals) {
           if (tile.material) tile.material.setFloat("uMorphProgress", progress);
@@ -750,6 +775,12 @@ export class WeatherTerrain {
       
       if (progressAmount >= 1.0) {
         this.morphStartTime = null;
+        
+        // Ensure uMorphProgress is permanently 1.0 for all active tiles once morph is complete
+        this.uniforms.uMorphProgress = 1.0;
+        for (const tile of this.activeTiles.values()) {
+          if (tile.material) tile.material.setFloat("uMorphProgress", 1.0);
+        }
         
         if (this.morphDirection === -1 && this.pendingEnables) {
           for (const tile of this.pendingEnables) {
