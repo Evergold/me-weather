@@ -361,20 +361,16 @@ export class WeatherTerrain {
 
     // Only perform the transition swap when all target zoom meshes are fully loaded.
     if (allTargetTilesLoaded) {
-      // 1. Enable new target tiles immediately and gather compilation promises
+      // 1. Gather compilation promises without enabling the meshes yet to prevent single-frame pops
       const compilationPromises = [];
       for (const key of visibleKeys) {
         const tile = this.activeTiles.get(key);
         if (tile && tile.mesh) {
-          tile.mesh.setEnabled(true);
           if (tile.material) {
             compilationPromises.push(tile.material.forceCompilationAsync(tile.mesh));
           }
-          if (tile.spsMesh) {
-            tile.spsMesh.setEnabled(true);
-            if (tile.spsMesh.material) {
-              compilationPromises.push(tile.spsMesh.material.forceCompilationAsync(tile.spsMesh));
-            }
+          if (tile.spsMesh && tile.spsMesh.material) {
+            compilationPromises.push(tile.spsMesh.material.forceCompilationAsync(tile.spsMesh));
           }
         }
       }
@@ -401,6 +397,11 @@ export class WeatherTerrain {
           if (tile.mesh) tile.mesh.setEnabled(false); // Hide immediately
           this.pendingDisposals.push(tile); // Delay disposal until morph completes
           keysToDelete.push(key);
+        } else {
+          // Now that compilation is complete and morph progress is set, safely enable target tiles
+          if (tile.mesh) tile.mesh.setEnabled(true);
+          if (tile.spsMesh) tile.spsMesh.setEnabled(true);
+          if (tile.material) tile.material.setFloat("uMorphProgress", this.uniforms.uMorphProgress);
         }
       }
       for (const key of keysToDelete) {
