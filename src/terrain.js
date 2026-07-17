@@ -68,9 +68,10 @@ export class WeatherTerrain {
         vUv = uv;
         // Calculate global UV coordinates relative to the full terrain grid
         float tilesCount = 1.0 / uTileScale;
+        float globalOffsetY = (tilesCount - 1.0 - uTileOffset.y) * uTileScale;
         vUvGlobal = vec2(
           uTileOffset.x * uTileScale + uv.x * uTileScale,
-          uTileOffset.y * uTileScale + uv.y * uTileScale
+          globalOffsetY + uv.y * uTileScale
         );
         // Flawless Geomorphing: interpolate from parent tile texture to child tile texture
         vec2 clampedUv = clamp(uv, 0.002, 0.998);
@@ -389,24 +390,16 @@ export class WeatherTerrain {
         this.uniforms.uMorphProgress = 1.0;
       }
       
+      if (!this.pendingDisposals) this.pendingDisposals = [];
+      
       const keysToDelete = [];
       for (const [key, tile] of this.activeTiles.entries()) {
         const parts = key.split("_");
         const tileZ = parseInt(parts[0]);
         
         if (tileZ !== z || !visibleKeys.has(key)) {
-          if (tile.mesh) tile.mesh.dispose();
-          if (tile.material) tile.material.dispose();
-          if (tile.heightTex) tile.heightTex.dispose();
-          if (tile.normalTex) tile.normalTex.dispose();
-          if (tile.flowTex) tile.flowTex.dispose();
-          if (tile.sps) tile.sps.dispose();
-          if (tile.spsMesh) {
-            if (this.scene.metadata && this.scene.metadata.shadowGenerator) {
-              this.scene.metadata.shadowGenerator.removeShadowCaster(tile.spsMesh);
-            }
-            tile.spsMesh.dispose();
-          }
+          if (tile.mesh) tile.mesh.setEnabled(false); // Hide immediately
+          this.pendingDisposals.push(tile); // Delay disposal until morph completes
           keysToDelete.push(key);
         }
       }
@@ -583,7 +576,9 @@ export class WeatherTerrain {
           prevTex = parentTile.heightTex;
           parentScale = 0.5;
           parentOffsetX = (x % 2) * 0.5;
-          parentOffsetY = (y % 2) * 0.5;
+          // Invert the Y offset because BabylonJS V=0 is at the bottom (South)
+          // y%2 === 0 is North child (needs V=0.5 to 1.0), y%2 === 1 is South child (needs V=0.0 to 0.5)
+          parentOffsetY = (y % 2 === 0) ? 0.5 : 0.0;
         }
       }
     }
@@ -716,15 +711,38 @@ export class WeatherTerrain {
     this.uniforms.uTime = time;
     
     // Animate geomorph progress over 250ms (approx 15 frames)
-    const morphDuration = 250.0;
+    // 2. Animate Geomorphing
     if (this.morphStartTime) {
-      const elapsed = performance.now() - this.morphStartTime;
-      this.uniforms.uMorphProgress = Math.min(1.0, elapsed / morphDuration);
-      if (this.uniforms.uMorphProgress >= 1.0) {
-        this.morphStartTime = null;
+      const elapsed = timestamp - this.morphStartTime;
+      const progress = Math.min(1.0, elapsed / 250.0); // 250ms crossfade
+      this.uniforms.uMorphProgress = progress;
+      
+      for (const tile of this.activeTiles.values()) {
+        if (tile.material) {
+          tile.material.setFloat("uMorphProgress", progress);
+        }
       }
-    } else {
-      this.uniforms.uMorphProgress = 1.0;
+      
+      if (progress >= 1.0) {
+        this.morphStartTime = null;
+        if (this.pendingDisposals) {
+          for (const tile of this.pendingDisposals) {
+            if (tile.mesh) tile.mesh.dispose();
+            if (tile.material) tile.material.dispose();
+            if (tile.heightTex) tile.heightTex.dispose();
+            if (tile.normalTex) tile.normalTex.dispose();
+            if (tile.flowTex) tile.flowTex.dispose();
+            if (tile.sps) tile.sps.dispose();
+            if (tile.spsMesh) {
+              if (this.scene.metadata && this.scene.metadata.shadowGenerator) {
+                this.scene.metadata.shadowGenerator.removeShadowCaster(tile.spsMesh);
+              }
+              tile.spsMesh.dispose();
+            }
+          }
+          this.pendingDisposals = [];
+        }
+      }
     }
     
     const seasonMap = {
