@@ -96,6 +96,7 @@ export class WeatherUI {
     // Automatically transition to the dashboard and trigger simulation start on load
     // only when the terrain tiles and WebSocket are fully connected and ready.
     const startTime = performance.now();
+    let visualProgress = 0;
     const checkInterval = setInterval(() => {
       const elapsed = performance.now() - startTime;
       
@@ -103,16 +104,23 @@ export class WeatherUI {
       const isRendererReady = this.renderer.initialTilesLoaded;
       const isSocketReady = this.physics.isConnected;
       
-      let progress = 0;
-      if (isPhysicsReady) progress += 33;
-      if (isSocketReady) progress += 33;
-      if (isRendererReady) progress += 34;
+      let targetProgress = 0;
+      if (isPhysicsReady) targetProgress += 33;
+      if (isSocketReady) targetProgress += 33;
+      if (isRendererReady) targetProgress += 34;
+      
+      // Smoothly simulate progress over time for cinematic effect
+      if (visualProgress < targetProgress) {
+        visualProgress += 2; // 2% per 100ms = exactly 5.0 seconds to reach 100%
+        if (visualProgress > targetProgress) visualProgress = targetProgress;
+      }
       
       const progressBar = document.getElementById('launcher-progress');
       if (progressBar) {
-        progressBar.style.transform = `scaleX(${progress / 100})`;
+        progressBar.style.transform = `scaleX(${visualProgress / 100})`;
       }
-      if (progress === 100 || (this.renderer && this.renderer.terrain && this.renderer.terrain.isCompiling)) {
+      
+      if (visualProgress === 100 || (this.renderer && this.renderer.terrain && this.renderer.terrain.isCompiling)) {
         const cz = document.querySelector('.connecting-zone');
         if (cz && !cz.classList.contains('finalizing')) {
           cz.classList.add('finalizing');
@@ -121,7 +129,7 @@ export class WeatherUI {
         }
       }
       // Force launch if it takes longer than 25 seconds as a safety fallback
-      if ((isPhysicsReady && isRendererReady && isSocketReady) || elapsed > 25000) {
+      if ((isPhysicsReady && isRendererReady && isSocketReady && visualProgress === 100) || elapsed > 25000) {
         clearInterval(checkInterval);
         console.log(`[UI] Launching dashboard. Setup took ${elapsed.toFixed(0)}ms. (Physics: ${isPhysicsReady}, Renderer: ${isRendererReady}, Socket: ${isSocketReady})`);
         if (elapsed > 25000) {
