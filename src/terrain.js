@@ -138,36 +138,48 @@ export class WeatherTerrain {
         
         vec3 viewDirTS = normalize(viewDir * tbn);
         
-        // POM Setup
-        float numLayers = mix(32.0, 8.0, abs(dot(vec3(0.0, 1.0, 0.0), viewDir))); // More layers at glancing angles
-        float layerDepth = 1.0 / numLayers;
-        float currentLayerDepth = 0.0;
+        // --- DISTANCE-BASED POM LOD ---
+        // Dynamically scale raymarch steps based on camera distance to save massive GPU fill-rate!
+        float distToCamera = distance(vPosition, vEyePosition);
+        // Reduce POM max distance to 1500.0 (drastically reduces fill-rate lag!)
+        float lodFactor = clamp(1.0 - (distToCamera / 1500.0), 0.0, 1.0);
         
-        // Parallax depth scale
-        float parallaxScale = 0.015; 
-        vec2 P = viewDirTS.xz * parallaxScale; 
-        vec2 deltaTexCoords = P / numLayers;
+        vec2 pomUv = vUv; // Default to standard UV if POM is skipped
         
-        vec2 texCoords = vUv;
-        // Generate pseudo-micro-depth from the flowmap and normal map to give rocks/rivers deep ridges
-        float currentDepthMapValue = 1.0 - textureLod(tHeight, clamp(texCoords, 0.002, 0.998), 0.0).r;
-        
-        // Raymarch loop
-        for(int i = 0; i < 32; i++) {
-            if (currentLayerDepth >= currentDepthMapValue) break;
-            texCoords -= deltaTexCoords;
-            currentDepthMapValue = 1.0 - textureLod(tHeight, clamp(texCoords, 0.002, 0.998), 0.0).r;
-            currentLayerDepth += layerDepth;
+        if (lodFactor > 0.05) {
+            // POM Setup
+            float baseLayers = mix(16.0, 4.0, abs(dot(vec3(0.0, 1.0, 0.0), viewDir))); 
+            float numLayers = max(2.0, baseLayers * lodFactor); // Scale iterations by distance
+            
+            float layerDepth = 1.0 / numLayers;
+            float currentLayerDepth = 0.0;
+            
+            // Parallax depth scale
+            float parallaxScale = 0.015; 
+            vec2 P = viewDirTS.xz * parallaxScale; 
+            vec2 deltaTexCoords = P / numLayers;
+            
+            vec2 texCoords = vUv;
+            float currentDepthMapValue = 1.0 - textureLod(tHeight, clamp(texCoords, 0.002, 0.998), 0.0).r;
+            
+            // Raymarch loop
+            // Use a fixed max loop counter to satisfy WebGL/WebGPU unrolling, but break early dynamically
+            for(int i = 0; i < 16; i++) {
+                if (float(i) >= numLayers || currentLayerDepth >= currentDepthMapValue) break;
+                texCoords -= deltaTexCoords;
+                currentDepthMapValue = 1.0 - textureLod(tHeight, clamp(texCoords, 0.002, 0.998), 0.0).r;
+                currentLayerDepth += layerDepth;
+            }
+            
+            // Relief Mapping Refinement (Binary Search)
+            vec2 prevTexCoords = texCoords + deltaTexCoords;
+            float afterDepth  = currentDepthMapValue - currentLayerDepth;
+            float beforeDepth = (1.0 - textureLod(tHeight, clamp(prevTexCoords, 0.002, 0.998), 0.0).r) - currentLayerDepth + layerDepth;
+            float weight = afterDepth / max(afterDepth - beforeDepth, 0.0001);
+            vec2 finalTexCoords = prevTexCoords * weight + texCoords * (1.0 - weight);
+            
+            pomUv = clamp(finalTexCoords, 0.002, 0.998);
         }
-        
-        // Relief Mapping Refinement (Binary Search)
-        vec2 prevTexCoords = texCoords + deltaTexCoords;
-        float afterDepth  = currentDepthMapValue - currentLayerDepth;
-        float beforeDepth = (1.0 - textureLod(tHeight, clamp(prevTexCoords, 0.002, 0.998), 0.0).r) - currentLayerDepth + layerDepth;
-        float weight = afterDepth / max(afterDepth - beforeDepth, 0.0001);
-        vec2 finalTexCoords = prevTexCoords * weight + texCoords * (1.0 - weight);
-        
-        vec2 pomUv = clamp(finalTexCoords, 0.002, 0.998);
         
         vec3 normal = normalize(vNormal);
         
