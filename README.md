@@ -72,10 +72,8 @@ me-weather/
 │   ├── terrain.js           # Terrain tile LOD system, geomorphing, and custom shaders
 │   ├── physics.js           # WebAssembly thermodynamics and fluid simulation bindings
 │   └── ui.js                # Control panel interface and HTML DOM updates
-├── SSG_U25_LuaDocumentation/# Legacy UI documentation for the original game
 ├── tests/                   # Automated E2E Playwright tests and Pytest backend integration tests
 ├── third_party_licenses/    # Open-source dependency licenses
-├── .env                     # Environment variables and configuration options
 ├── Caddyfile                # Production TLS (HTTPS/WSS) reverse proxy configuration
 ├── docker-compose.yml       # Docker deployment and testing orchestrator configuration
 ├── GPU_SOLVER.md            # Documentation for the WebGPU compute shader architecture
