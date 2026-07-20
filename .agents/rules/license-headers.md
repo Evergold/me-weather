@@ -3,7 +3,7 @@ name: license-headers
 description: Ensures all self-authored source files in this workspace have the appropriate MIT license header, while preserving existing Apache 2.0 or other pre-existing headers in imported files.
 globs:
   - "server/**/*.py"
-  - "server/**/*.rs"
+  - "rust-engine/**/*.rs"
   - "src/**/*.js"
   - "src/**/*.css"
   - "index.html"
